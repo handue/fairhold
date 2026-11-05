@@ -1,0 +1,73 @@
+/**
+ * PayPal's cancel_url: the buyer backed out on PayPal's page. Marks the pending hold canceled and
+ * tells the opener. PayPal appends ?token=<order id> to the ?hold=<hold id>&next=<path> that
+ * Fairhold put in the URL.
+ */
+import { cancelHoldApproval, type CancelOutcome } from "@/server/paypal/holds";
+import { backHrefFor, paypalWindowResponse, type PaypalWindowPage } from "@/server/paypal/window-page";
+
+export async function GET(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const holdId = url.searchParams.get("hold");
+  const next = url.searchParams.get("next");
+  if (!holdId) return paypalWindowResponse(unknownHold(next, 400));
+
+  try {
+    const outcome = await cancelHoldApproval({ holdId, orderId: url.searchParams.get("token") });
+    return paypalWindowResponse(pageFor(outcome, next));
+  } catch (error) {
+    console.error(`[paypal/cancel] hold ${holdId}:`, error);
+    return paypalWindowResponse({
+      status: 500,
+      outcome: "error",
+      holdId: null,
+      heading: "Something went wrong",
+      detail: "Nothing was held. Please go back to the auction.",
+      backHref: backHrefFor(next, null),
+    });
+  }
+}
+
+function pageFor(outcome: CancelOutcome, next: string | null): PaypalWindowPage {
+  if (outcome.kind === "not_found") return unknownHold(next, 404);
+  const { hold } = outcome;
+  const shared = { holdId: hold.id, backHref: backHrefFor(next, hold.eventSlug) };
+
+  if (outcome.kind === "order_mismatch") {
+    return {
+      ...shared,
+      status: 409,
+      outcome: "error",
+      heading: "This PayPal window belongs to another hold",
+      detail: "Nothing changed. Please go back to the auction.",
+    };
+  }
+  if (outcome.kind === "not_pending" && hold.status === "authorized") {
+    // Canceled after an approval had already gone through: the hold stands.
+    return {
+      ...shared,
+      status: 200,
+      outcome: "approved",
+      heading: "Bidding power is already set",
+      detail: "PayPal confirmed this hold before the cancel. You can close this window.",
+    };
+  }
+  return {
+    ...shared,
+    status: 200,
+    outcome: "canceled",
+    heading: "Hold canceled",
+    detail: "Nothing was held. You can close this window and try again whenever you like.",
+  };
+}
+
+function unknownHold(next: string | null, status: number): PaypalWindowPage {
+  return {
+    status,
+    outcome: "error",
+    holdId: null,
+    heading: "We could not find this hold",
+    detail: "Nothing was held. Please go back to the auction.",
+    backHref: backHrefFor(next, null),
+  };
+}

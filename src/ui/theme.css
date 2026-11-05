@@ -1,0 +1,138 @@
+/*
+ * Fairhold design tokens, ported value for value from the approved mockups.
+ *
+ * Numbers are pixels. One spacing unit is 1px and the type and radius scales are named by their
+ * pixel size, so utilities read like the mockup CSS: `h-68 px-48 rounded-20 text-11.5`.
+ * Tailwind's default palette, type scale, radii and shadows are cleared, so only brand values exist.
+ *
+ * Lime is only ever a fill under ink text or a mark on ink, never text or lines on white.
+ */
+@theme {
+  --spacing: 1px;
+
+  --color-*: initial;
+  --color-lime: #daf66e;
+  --color-lime-edge: #a9c93a;
+  --color-ink: #0b0b0c;
+  --color-ink2: #3a3a3d;
+  --color-muted: #6b6b70;
+  --color-line: #e6e6e1;
+  --color-surface: #f4f4f1;
+  --color-white: #ffffff;
+  /* Warm stage greys: lot tiles and thumbnails, closed pills, Glim's chat panel. */
+  --color-stone: #efede8;
+  --color-stone-deep: #e8e6e0;
+  --color-closed: #ecebe7;
+  --color-panel: #f6f5f1;
+  /* Secondary text on ink surfaces. */
+  --color-on-ink-muted: #a9a9ae;
+
+  --text-*: initial;
+  --text-10\.5: 10.5px;
+  --text-11: 11px;
+  --text-11\.5: 11.5px;
+  --text-12: 12px;
+  --text-12\.5: 12.5px;
+  --text-13: 13px;
+  --text-13\.5: 13.5px;
+  --text-14: 14px;
+  --text-15: 15px;
+  --text-16: 16px;
+  --text-20: 20px;
+  --text-22: 22px;
+  --text-28: 28px;
+  --text-30: 30px;
+  --text-34: 34px;
+  --text-56: 56px;
+
+  --tracking-*: initial;
+  --tracking-display: -0.04em; /* large amounts: $320, $6,840 */
+  --tracking-title: -0.025em; /* page titles */
+  --tracking-heading: -0.02em; /* section headings, tile prices */
+  --tracking-snug: -0.01em; /* lot titles */
+  --tracking-status: 0.07em; /* the event status pill */
+  --tracking-label: 0.08em; /* mono labels: BIDDING POWER, breadcrumbs */
+  --tracking-caps: 0.09em; /* uppercase eyebrows */
+
+  --radius-*: initial;
+  --radius-1: 1px;
+  --radius-1\.25: 1.25px;
+  --radius-2: 2px;
+  --radius-3: 3px;
+  --radius-4: 4px;
+  --radius-8: 8px;
+  --radius-12: 12px;
+  --radius-16: 16px;
+  --radius-18: 18px;
+  --radius-20: 20px;
+  --radius-22: 22px;
+  --radius-24: 24px;
+  --radius-26: 26px;
+
+  --shadow-*: initial;
+  --shadow-bubble: 0 12px 30px rgba(11, 11, 12, 0.1);
+  /* Glim's orb at each approved size: a lime glow, a shaded rim and a highlight. */
+  --shadow-orb-68:
+    0 14px 28px rgba(120, 160, 0, 0.32), inset -6px -7px 13px rgba(80, 110, 0, 0.18),
+    inset 4px 4px 8px rgba(255, 255, 255, 0.9);
+  --shadow-orb-38:
+    0 6px 14px rgba(120, 160, 0, 0.28), inset -3px -4px 8px rgba(80, 110, 0, 0.16),
+    inset 2px 2px 5px rgba(255, 255, 255, 0.9);
+  --shadow-orb-32:
+    0 4px 12px rgba(120, 160, 0, 0.3), inset -2px -3px 6px rgba(80, 110, 0, 0.16),
+    inset 2px 2px 4px rgba(255, 255, 255, 0.9);
+  --shadow-orb-22:
+    0 2px 6px rgba(120, 160, 0, 0.26), inset -1px -2px 4px rgba(80, 110, 0, 0.16),
+    inset 1px 1px 3px rgba(255, 255, 255, 0.9);
+  --shadow-orb-18:
+    0 2px 5px rgba(120, 160, 0, 0.24), inset -1px -2px 3px rgba(80, 110, 0, 0.16),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.9);
+  /* The lot page's agent link uses a flat glow instead of the shaded rim. */
+  --shadow-orb-soft: 0 3px 8px rgba(120, 160, 0, 0.25);
+}
+
+/* inline: the Geist variables are set on <html> by the font loaders in the root layout. */
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  body {
+    background: var(--color-white);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    /* The mockups never set a base line height; Tailwind's preflight would make it 1.5. */
+    line-height: normal;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+}
+
+/* The stone tile behind every lot drawing. */
+@utility bg-stone-tile {
+  background: linear-gradient(180deg, var(--color-stone) 0%, var(--color-stone-deep) 100%);
+}
+
+/* Glim's frosted lime body. */
+@utility bg-orb {
+  background: radial-gradient(
+    circle at 35% 30%,
+    #ffffff 0%,
+    color-mix(in srgb, var(--color-lime) 18%, white) 28%,
+    color-mix(in srgb, var(--color-lime) 60%, white) 60%,
+    var(--color-lime) 90%,
+    color-mix(in srgb, var(--color-lime) 82%, #5e7a00) 100%
+  );
+}
+
+/* Lot drawings keep their line weight at every size. */
+@utility non-scaling-stroke {
+  & * {
+    vector-effect: non-scaling-stroke;
+  }
+}

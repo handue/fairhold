@@ -1,0 +1,23 @@
+{
+  "name": "golden-plan",
+  "description": "07's golden sentence. Intent only: Chef's Table at priority 1 with no cap, Spa Day at priority 2 capped at $120; the allocator turns it into $380 and $120.",
+  "guestText": "$500. I really want the chef's dinner. Spa only under $120.",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "tool_use",
+          "name": "propose_plan",
+          "input": {
+            "budget_dollars": 500,
+            "items": [
+              { "lot_number": 7, "priority": 1, "cap_dollars": null },
+              { "lot_number": 12, "priority": 2, "cap_dollars": 120 }
+            ]
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    }
+  ]
+}

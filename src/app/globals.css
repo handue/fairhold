@@ -1,0 +1,3 @@
+/* Scan only src/ for classes, so the HTML mockups and docs never leak utilities into the build. */
+@import "tailwindcss" source("../");
+@import "../ui/theme.css";

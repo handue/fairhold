@@ -1,0 +1,455 @@
+{
+ "screens": [
+  {
+   "file": "05-web-lot-detail-lime.html",
+   "purpose": "Lot detail and manual bidding: one lot's photos, donor and estimated value, the live current bid and countdown, preset raises, the bid action backed by the guest's PayPal hold, bid history, and a hand-off to Glim for this lot.",
+   "states_shown": [
+    "Event pill 'LIVE · CLOSES 9:30 PM' (lime dot); nav with Lots active; bidding power pill '$180 / $500' (available in lime / total hold); paddle pill '142 Jamie'",
+    "Breadcrumb 'Lots / Dining / Lot 07'",
+    "Photo hero with line illustration, 'PHOTO 1 / 4', heart and share buttons; 4 thumbnails, first selected (ink outline)",
+    "Eyebrow 'Lot 07 · Dining', title, meta 'Donated by Oak & Ember · Estimated value $480'",
+    "Bid card, viewer winning: lime chip 'You're winning', current bid $320, '12 bids', 'Closes in 18:42'",
+    "Raise-to presets $340 (selected, ink) / $360 / $400 / 'Max…'",
+    "Lime CTA 'Place bid $340' (amount mirrors the selected preset)",
+    "Lock line 'Held with PayPal. You're only charged if you win.'",
+    "Agent link with mini orb 'Let the agent bid on this lot →'",
+    "Bid history: 2 latest rows (Paddle 142 with lime 'You' tag $320 · 2 min ago; Paddle 088 $300 · 5 min ago) and '12 bids' count",
+    "Glim corner orb with bubble 'Want me to bid for you? / Tell me your budget. I'll spread it across the lots you like.' (bubble hidden while the chat panel is open, as in 07)"
+   ],
+   "data_needed": [
+    "Event: name, status, closes_at, timezone",
+    "Viewer paddle: number, first name, active hold amount, available (hold − current high bids − won amounts), commitments for the server check",
+    "Lot: number, category, title, short title, donor, estimated value, photos/illustrations (order, cover, count), starting bid, min raise, current bid, bid count, closes_at, status",
+    "Viewer's relation to the lot: winning / outbid / none, own active max (if any), whether the lot is in Glim's plan and its limit, favorite flag",
+    "Preset amounts: next minimum (current + min raise, or the starting bid if no bids), then +2 and +4 raises ($340/$360/$400 for a $20 raise)",
+    "Bid history: latest bids (paddle number, 'You' flag, amount, relative time) and total count",
+    "Server clock offset for the countdown"
+   ],
+   "server_actions": [
+    "placeBid(lotId, amountCents) in one DB transaction with row locks on the lot and the paddle's active hold: lot open and now < closes_at; amount ≥ next minimum; paddle has an authorized hold; Σ commitments including this bid ≤ hold; insert bid, update lot, let the deterministic engine auto-raise any rival's active max or Glim limit, write event_log and pg_notify",
+    "setMaxBid(lotId, maxCents) for 'Max…': a guest max the same engine bids up to by the minimum raise, under the same invariant as Glim (fallback if time is short: one custom amount)",
+    "toggleFavorite(lotId) for the heart; share = copy link / Web Share API (client only)",
+    "Open the Glim chat with this lot as context ('Let the agent bid on this lot', client only)",
+    "No authorized hold: CTA routes to 09 and returns to this lot after approval"
+   ],
+   "paypal_calls": [
+    "None per bid: every bid is checked against the stored authorization amount in Fairhold's own ledger; the hold itself comes from 09 (Orders v2 intent AUTHORIZE)"
+   ],
+   "glim_behaviors": [
+    "Corner bubble invitation (deterministic copy)",
+    "'Let the agent bid on this lot' opens the chat with this lot preloaded; Glim proposes a limit and nothing changes until the guest confirms",
+    "When the lot is in Glim's plan, Glim's auto-raises appear here as ordinary bids by the paddle (history and current bid update live)"
+   ],
+   "realtime": "SSE: current bid, bid count, viewer chip (winning ↔ outbid), history rows, nav bidding-power pill, lot close (card switches to a closed state), event pill LIVE→CLOSED; countdown ticks on the client against server time; relative times refresh.",
+   "ag_grid_features": [],
+   "priority": "must",
+   "notes": "Build from the HTML with --lime #DAF66E (the file's default #C8F031 is swapped by ?c=DAF66E); the approved render is 06a-lime-soft.png. 05-web-lot-detail-lime.png is stale: old lime and a '$180 / $300' hold that breaks the hold rule. Only the winning state is drawn and the lot description is not shown. Undrawn states the build needs (compose from approved parts, approve on one states sheet): outbid (08's outlined pill), no bid yet, bidding power not set, bid refused for lack of bidding power with a 'Raise bidding power' path, 'Max…' amount entry, closed / sold / won (10 and 11 pills), before open. The design keeps the CTA active while winning, so raising your own winning bid is allowed: the lot's commitment becomes the new amount, not the sum. Copy here says 'the agent' while every other screen says 'Glim'; renaming is a copy change to approve."
+  },
+  {
+   "file": "07-web-agent-chat.html",
+   "purpose": "Chat with Glim, the bidding agent: the guest gives a budget and per-lot wishes in plain language, Glim proposes a multi-lot plan with limits, the guest confirms, and Glim reports every action it takes. It is an overlay opened from the corner orb on any guest page (drawn over 05).",
+   "states_shown": [
+    "Panel open above the corner orb over the lot page; the page's resting bubble hidden",
+    "Header: 38px orb, 'Glim', lime status dot 'On duty · $500 held with PayPal', minimize and close buttons",
+    "Glim greeting 'Hi Jamie. What's your budget tonight?'",
+    "Guest message (ink bubble) '$500. I really want the chef's dinner. Spa only under $120.'",
+    "Plan card 'MY PLAN FOR YOU $500': allocation bar (ink 76% = priority 1, lime 24% = priority 2); item 1 Chef's Table Dinner 'Winning at $320' $380 MAX; item 2 Spa Day for Two 'Current bid $85' $120 MAX; lime 'Start bidding', ghost 'Edit'",
+    "Event card: mini orb, '9:14 PM · CHEF'S TABLE', 'Someone bid $360. I raised to $380, your limit for this lot.', lime chip 'Winning · $380'",
+    "Quick replies 'Raise my budget', 'Skip the spa', 'How am I doing?'",
+    "Input 'Message Glim…' with a '+' button and an ink send button (lime arrow)"
+   ],
+   "data_needed": [
+    "Paddle: first name, hold amount, available, commitments",
+    "Open lots for the model: number, short title, category, current bid, next minimum, min raise, closes_at, estimated value; the guest's favorites and current bids",
+    "Plan (proposed or active): status, budget, items (lot, priority, max, live status text such as 'Winning at $320' or 'Current bid $85'), allocation shares",
+    "Chat history (messages and cards) and Glim actions for this paddle, interleaved by time",
+    "Context lot when opened from 05 or 08 ('Let the agent bid', 'Let Glim watch')",
+    "Contextual quick replies"
+   ],
+   "server_actions": [
+    "sendMessage(text): Claude (claude-sonnet-5-5) with tool use; read-only tools (open lots, my status) and proposal tools (propose_plan, propose_change, suggest_hold_amount); reply streamed; persisted to chat_messages; per-session message cap to bound API cost",
+    "Validate every proposal in code before it is shown: lots open, each max ≥ next minimum, Σ max ≤ min(budget, hold); clamp or explain",
+    "confirmPlan(planId) on 'Start bidding': one transaction creates bid_limits and places opening bids through the same placeBid checks",
+    "editPlan(planId, items) on 'Edit' (inline max inputs, remove lot) → re-validate → confirm",
+    "removePlanItem(lotId) for 'Skip the spa': no further raises; existing bids stand",
+    "'Raise my budget': the budget cannot exceed the hold, so it starts the raise-bidding-power flow (09/10 PayPal)",
+    "pauseGlim / resumeGlim (also on 10)"
+   ],
+   "paypal_calls": [
+    "None directly; 'Raise my budget' hands off to the raise flow (create an AUTHORIZE order, authorize it, then void the old authorization)"
+   ],
+   "glim_behaviors": [
+    "Greets by first name and asks for a budget",
+    "Turns free text into a plan: budget, per-lot max, priority; never more than the hold",
+    "Waits for 'Start bidding' (explicit consent) before acting",
+    "Bids only through the server's placeBid checks; the deterministic engine raises by the minimum needed up to each limit",
+    "Posts an event card for each action or outcome (raised, limit reached, outbid above the limit, won, lost or closed) with a status chip; wording comes from deterministic templates so amounts are exact",
+    "Answers 'How am I doing?' from live data",
+    "Explains refusals (for example a request above bidding power) and offers to raise bidding power",
+    "Proposes moving freed budget when a plan lot is lost or closes (needs consent)"
+   ],
+   "realtime": "Per-paddle SSE channel: new Glim event cards, plan item status text, header status (On duty / Paused / Off duty), the held amount in the header; Claude replies stream token by token.",
+   "ag_grid_features": [],
+   "priority": "must",
+   "notes": "AI proposes, code enforces: the model returns a proposal object, only the deterministic engine creates bids, and no tool can move money; rejected proposals are logged in glim_actions (this feeds 12's check). The mockup joins two moments on purpose: in the product, event cards arrive only after 'Start bidding'. The '+' in the input has no stated intent; suggest 'Add a lot to my plan' (lot picker). Undrawn states: first open with no plan, thinking/streaming, API error fallback ('You can still bid yourself'), plan editing, paused, off duty after close, bidding power not set (Glim sends the guest to 09). Panel geometry from the HTML: 400×704, right-aligned above the 68px orb."
+  },
+  {
+   "file": "08-web-lots.html",
+   "purpose": "The first page: a guest's home for a live event. Shows the PayPal hold and the guest's bid status at a glance, the amount raised for the charity, and every lot with live prices and countdowns, with entry points to bid, to Glim and to each lot.",
+   "states_shown": [
+    "Event pill 'LIVE · CLOSES 9:30 PM'; nav with Lots active; bidding power pill '$180 / $500'; paddle pill '142 Jamie'",
+    "Ink 'My paddle' band: lock + 'Bidding power held with PayPal / You're only charged for lots you win.'; MY BIDS counts '1 winning' (lime pill) and '1 outbid' (outlined pill); mini orb + lime CTA 'Let Glim bid for me →'",
+    "Catalog header 'Tonight's lots'; category tabs All 24 (selected) / Dining / Experiences / Art / Wellness / Pets; '$6,840 raised so far for Riverside Animal Shelter'",
+    "Tile, viewer winning (lime 'You're winning' pill)",
+    "Tile, viewer outbid ('You're outbid' outlined pill + 'Bid again' button)",
+    "Tile with 'Let Glim watch' button (mini orb) on a lot the viewer hasn't bid on",
+    "Neutral tiles (no pill)",
+    "Timer: normal countdown with clock icon vs ink 'soon' pill under 10 minutes (07:55, 09:30)",
+    "Tile footer: 'Lot NN · Category', title, current price, bid count",
+    "'Show 16 more lots' (8 of 24 visible)",
+    "Glim corner orb with bubble 'Want me to bid for you? / Tell me your budget. I'll spread it across the lots you like.'"
+   ],
+   "data_needed": [
+    "Event: name, charity name, status, closes_at, timezone, lot counts",
+    "Viewer: paddle number, first name, hold amount, available, counts of lots winning and outbid",
+    "Per lot: number, category, title, cover illustration/photo, current bid (or starting bid), bid count, closes_at, viewer status (winning / outbid / none), in viewer's Glim plan, favorite flag",
+    "Raised so far = Σ current high bids on open lots + Σ winning amounts on closed lots",
+    "Server clock offset for countdowns"
+   ],
+   "server_actions": [
+    "getCatalog(eventId, category, page) (server component query)",
+    "getViewerSummary() (hold, available, winning/outbid counts)",
+    "'Bid again' → 05 with the next minimum preselected (no bid straight from the tile)",
+    "'Let Glim watch' → opens the chat with the lot as context; Glim proposes a limit; addPlanItem only after the guest confirms",
+    "'Let Glim bid for me' → opens the chat",
+    "Category filter (URL search param) and 'Show more' (reveal or paginate)"
+   ],
+   "paypal_calls": [
+    "None on this page; hold status is read from the database (set by 09)"
+   ],
+   "glim_behaviors": [
+    "Corner bubble invitation; orb and the band CTA open the chat",
+    "'Let Glim watch' turns a lot into a proposed plan item (consent required)"
+   ],
+   "realtime": "SSE: lot prices and bid counts, the viewer's pills (winning ↔ outbid), band counts, raised total, nav bidding-power pill, lot closes, event pill LIVE→CLOSED; timers tick on the client and switch to the ink 'soon' pill under 10 minutes.",
+   "ag_grid_features": [],
+   "priority": "must",
+   "notes": "Rule for 'Let Glim watch': show it on lots the guest hearted on 05 that are not in Glim's plan and not yet bid on. The seeded catalog needs a cover drawing per lot: about 14 exist across 08, 13 and 13b, about 10 are missing (Bakery Box, Wine Club, Coffee Roaster Tour, Massage, Cooking Class, Photo Print, Ceramics Workshop, Yoga, Dog Grooming, Shelter Day); new drawings are visible design and need approval. Undrawn states: bidding power not set (band and nav 'Not set', CTA to 09), closed/sold tiles once staggered closes begin (reuse 10's grey closed pill and 11's won pill), empty category, before open, event closed (link to the receipt). Add the approved naming board's footer line 'Riverside Shelter Gala · runs on Fairhold' below the fold on guest pages."
+  },
+  {
+   "file": "09-web-bidding-power.html",
+   "purpose": "Set bidding power before bidding: choose an amount, understand that it is a PayPal hold (authorization) and not a charge, and approve it in a PayPal window.",
+   "states_shown": [
+    "Nav with My paddle active; bidding power pill 'Not set' (grey)",
+    "Eyebrow 'Before you bid', title 'Set your bidding power', lede 'The most you and Glim can bid tonight. It's a hold with PayPal, not a charge.'",
+    "Amount presets $250 / $500 (selected) / $1,000 / 'Other…'; note 'You can raise it later with another hold'",
+    "'How the hold works' panel, example 'you win the Chef's Table Dinner at $320', three steps: When you approve ($500 held, 'Held, not charged'), While you bid (paddle + Glim icons, '$180 left', 'Never over $500'), After 9:30 PM ('$320 paid / $180 released', 'Pay only for lots you win', 'Win nothing? All $500 is released.')",
+    "Lime CTA 'Hold $500 with PayPal ↗' and lock line 'You'll approve the hold in a PayPal window, then come back to bid.'",
+    "Glim bubble 'Not sure how much? / Tell me which lots you like. I'll suggest an amount.'"
+   ],
+   "data_needed": [
+    "Event: name, close time (step 3 label), currency, hold presets, minimum and maximum for 'Other…'",
+    "Paddle: current hold (none → setup; existing → raise mode)",
+    "Example for the explainer: a featured lot and a win amount that fits the selected hold (all figures recompute from the selected amount)",
+    "Hold status while PayPal is open: pending, authorized, canceled, failed"
+   ],
+   "server_actions": [
+    "createHold(amountCents): insert hold (pending_approval), create the PayPal order, return the payer-action link; the client opens a blank popup synchronously on click and then points it at the link (full-page redirect if the popup is blocked)",
+    "GET /paypal/return: authorize the order, store authorization id, amount, expiration_time and payer name/email; on a raise, void the previous authorization; postMessage to the opener and close",
+    "GET /paypal/cancel: mark canceled and notify the opener",
+    "Webhook handler as a backstop: authorize on CHECKOUT.ORDER.APPROVED if the return page never ran",
+    "Validate the 'Other…' amount (whole dollars, event min/max)",
+    "After approval, return to the lot or catalog the guest came from"
+   ],
+   "paypal_calls": [
+    "POST /v1/oauth2/token (client credentials, cached)",
+    "POST /v2/checkout/orders: intent AUTHORIZE; one purchase unit (USD amount, description, custom_id = hold id, soft_descriptor e.g. RIVERSIDEGALA); payment_source.paypal.experience_context (brand_name = event name, shipping_preference NO_SHIPPING, user_action, return_url, cancel_url); PayPal-Request-Id = hold id",
+    "Buyer approves at the payer-action link in the popup (sandbox buyer login)",
+    "POST /v2/checkout/orders/{id}/authorize (PayPal-Request-Id) → authorization id, status CREATED, expiration_time",
+    "Raise only: POST /v2/payments/authorizations/{oldId}/void after the new authorization succeeds",
+    "Webhooks: CHECKOUT.ORDER.APPROVED, PAYMENT.AUTHORIZATION.CREATED, PAYMENT.AUTHORIZATION.VOIDED, verified with POST /v1/notifications/verify-webhook-signature (confirm exact event names)"
+   ],
+   "glim_behaviors": [
+    "Bubble offers to suggest an amount; in the chat Glim reads the guest's hearted lots (current bids, next minimums, estimated values) and proposes a figure; the guest picks it; Glim never creates a hold",
+    "Copy states the rule Glim lives under ('The most you and Glim can bid tonight', 'Your bids and Glim's stay within it')"
+   ],
+   "realtime": "Only the hold status: after the PayPal window (postMessage plus SSE) the nav pill flips from 'Not set' to '$500 / $500' and the guest is sent back to bid.",
+   "ag_grid_features": [],
+   "priority": "must",
+   "notes": "The lime CTA is a custom button, not PayPal JS SDK buttons: the brand rules forbid PayPal logo artwork (plain 'PayPal' text is fine), so the server creates the order and opens PayPal's approval link. 'Another hold' for a raise should be built as a new authorization for the new total, then a void of the old one, so each paddle has exactly one live authorization; that keeps the approved copy true ('One payment' and a single transaction ID on 11, 'One charge per winner' on 12). This replaces the earlier idea of stacking a second hold. The explainer's figures must follow the selected amount (an example win that fits, e.g. 64% of the hold) and step 3 uses the event's close time. Undrawn states: 'Other…' entry, waiting for PayPal, canceled, failed/declined, popup blocked, raise mode (new total; old hold released). Check what PayPal's sandbox page says for the chosen user_action, since the copy promises 'not a charge'."
+  },
+  {
+   "file": "10-web-my-paddle.html",
+   "purpose": "The guest's live status: what is held, what is committed in winning bids and what they would pay if bidding ended now, each of their lots with Glim's limit, and Glim's action log with pause and edit controls.",
+   "states_shown": [
+    "Nav with My paddle active; pill '$30 / $500'",
+    "Money panel: '$500 held with PayPal / Nothing is charged until bidding closes at 9:30 PM.'; bar '$470 in winning bids' (ink) and '$30 left · Glim's room on Spa Day' (lime); 'If bidding ended now, you'd pay $470. $30 would be released.'; lime CTA 'Raise bidding power ↗' with 'Approve another hold in a PayPal window'",
+    "'My lots' header with 'Your winning bids support Riverside Animal Shelter'",
+    "Row winning at Glim's limit: 'Glim's limit $380 · reached', ink timer 01:02, $380, 14 bids",
+    "Row winning with room left: 'Glim's limit $120 · $30 of room left', ink timer 08:30, $90, 5 bids",
+    "Row closed and not won (dimmed): 'Not in Glim's plan · outbid', grey 'Closed at 9:13 PM', 'No charge / Sold for $95'",
+    "Glim's activity card: 'On duty since 9:11 PM', 'Edit plan', 'Pause'; rule 'Glim can't bid past your limits or your $500 bidding power.'; feed newest first: raise to limit (chip Winning · $380), lot closed not won (grey chip Closed), opening bid (chip Winning · $90), plan started",
+    "Footer 'You pay only for the lots you win.'",
+    "Glim nudge bubble '1 minute left on Chef's Table / You're at your $380 limit. Want more room?'"
+   ],
+   "data_needed": [
+    "Active hold: amount, authorized_at",
+    "Σ current winning bids and won amounts; available; would-pay and would-release",
+    "Glim's reserved room (limit − current bid on winning plan lots) and the lot it sits on",
+    "My lots: lots with my bids, my max or a plan item; per lot: illustration, number, category, title, Glim limit note, my state (winning / outbid / closed not won / won), closes_at, current bid or sold price, bid count",
+    "Plan status and confirmed_at; Glim actions newest first (time, lot short name, sentence, chip snapshot)",
+    "Nudge inputs: time left per plan lot, at-limit flag"
+   ],
+   "server_actions": [
+    "getPaddleOverview()",
+    "raiseBiddingPower(newTotalCents) → same PayPal flow as 09 (new authorization, then void the old one)",
+    "pauseGlim / resumeGlim (no new Glim bids while paused; existing bids stand)",
+    "'Edit plan' opens the chat plan editor (07)",
+    "Nudge click opens the chat with a proposed limit increase within available power, or the raise flow when nothing is left"
+   ],
+   "paypal_calls": [
+    "Raise bidding power: POST /v2/checkout/orders (AUTHORIZE, new total) → buyer approval → POST /v2/checkout/orders/{id}/authorize → POST /v2/payments/authorizations/{oldId}/void",
+    "Page load uses stored hold data; no PayPal call"
+   ],
+   "glim_behaviors": [
+    "Activity log of every Glim action with the limit it respected, including lots outside the plan closing ('You didn't win, so you won't be charged')",
+    "Limit note per lot (reached / room left / not in plan)",
+    "Pause and Edit plan controls; 'On duty since …'",
+    "Deterministic nudges near a close when a plan lot is at its limit"
+   ],
+   "realtime": "SSE: money panel figures and bar, nav pill, row states, prices, bid counts and limit notes, new activity entries prepended, nudge bubble, Pause/Resume state; timers tick on the client.",
+   "ag_grid_features": [],
+   "priority": "must",
+   "notes": "Displayed 'left' = hold − winning bids − won amounts; enforcement counts active limits at their max (the earlier decision: winning bids plus proxy maxes never exceed the hold), so the $30 labeled 'Glim's room' cannot fund a bid on another lot while Glim holds it; such a bid is refused with a reason (undrawn error state). Undrawn states: no bids yet (empty My lots), hold not set (→ 09), Glim not started, Glim paused (Resume), bidding closed but not yet charged (link to 11 pending), raise in progress."
+  },
+  {
+   "file": "11-web-receipt.html",
+   "purpose": "After settlement: thank the guest, show what they won and paid, what was released, Glim's recap and the lot they did not win (never charged), plus a tax receipt with per-item deductible amounts and the PayPal transaction ID.",
+   "states_shown": [
+    "Nav: grey 'CLOSED AT 9:30 PM' pill; outcome pill 'PAID $470 · RELEASED $30'",
+    "Eyebrow 'Bidding closed', 'Thank you, Jamie.', 'Your winning bids support Riverside Animal Shelter.'",
+    "Won lot card 'Won at 9:17 PM': $380 paid, 'Bid by Glim · at your $380 limit', 'Estimated value $480 / Tax-deductible $0'",
+    "Won lot card 'Won at 9:24 PM': $90 paid, 'Bid by Glim · $30 under your $120 limit', 'Estimated value $70 / Tax-deductible $20'",
+    "Glim recap row 'Off duty since 9:30 PM': 'I placed 2 bids for you, each within your limits. You won both lots in your plan.'",
+    "Not-won row: grey 'Not won', Lot 21 Dog Walking, 'Never charged / Closed at 9:13 PM'",
+    "Receipt panel: 'Receipt 1107-142', 'Paddle 142 · Jamie', 'Saturday, November 7, 2026 · 9:30 PM'; '$500 held with PayPal at 8:41 PM'; '$470 paid with PayPal / $30 released' bar; 'One payment at 9:30 PM for the 2 lots you won…'; bank-delay note; '$20 tax-deductible' with the rule and the 501(c)(3)/EIN disclosure; 'PayPal transaction ID 7HX40418TL552863B'; 'On your statement PAYPAL *RIVERSIDEGALA'; lime 'Download receipt PDF'; ghost 'Email me a copy'",
+    "Footer 'As promised, you paid only for the lots you won.'; Glim bubble 'Your items are ready / Show this receipt at the front desk by 10 PM.'"
+   ],
+   "data_needed": [
+    "Receipt: number (MMDD-paddle), issued_at, paddle number, first name",
+    "Hold amount and authorized_at; paid (capture amount) and capture time; released (hold − paid); capture id; statement descriptor",
+    "Won lots: illustration, number, category, title, lot close time, paid, bid source (Glim or guest) with the limit comparison, estimated value, deductible = max(0, paid − estimated value)",
+    "Lots bid on but not won: title, close time",
+    "Glim recap counts: Glim bids placed, all within limits, plan lots won of total",
+    "Charity name, 501(c)(3) status, EIN; pickup note; guest email for 'Email me a copy'"
+   ],
+   "server_actions": [
+    "getReceipt(paddleId): snapshot written when the capture succeeds",
+    "downloadReceiptPdf: route handler that renders the same content as a PDF",
+    "emailReceipt: needs an email provider the user signs up for (or a mailto fallback with the receipt link)"
+   ],
+   "paypal_calls": [
+    "None on view; figures come from the settlement's POST /v2/payments/authorizations/{id}/capture response (capture id = transaction ID)",
+    "Optional GET /v2/payments/captures/{id} to confirm status",
+    "Webhooks PAYMENT.CAPTURE.COMPLETED / PAYMENT.AUTHORIZATION.VOIDED update the receipt state"
+   ],
+   "glim_behaviors": [
+    "First-person recap stating the limits kept (deterministic from glim_actions)",
+    "'Bid by Glim' attribution with the limit comparison per won lot",
+    "Off duty after close; bubble gives the pickup instruction"
+   ],
+   "realtime": "Once: when this paddle's settlement item completes, the page switches from pending to paid and the transaction ID appears (SSE); otherwise static.",
+   "ag_grid_features": [],
+   "priority": "must",
+   "notes": "Undrawn states the flow needs: won nothing (authorization voided: $0 paid, everything released, 'Never charged'), closed but not yet charged (would-pay figures, no transaction ID, download disabled), capture pending or failed. Tax copy must avoid FMV, IRS and 'guaranteed'. Snapshot figures at capture so later lot edits cannot change a receipt. 'Email me a copy' is the only feature on the approved screens that needs a new third-party account."
+  },
+  {
+   "file": "12-web-control-room.html",
+   "purpose": "Organizer settlement: after bidding closes, review every bidder's hold, what each winner will be charged and what will be released, see the safety checks, and charge all winners in one action (capture for each winner, void for everyone else).",
+   "states_shown": [
+    "Organizer nav: grey 'CLOSED AT 9:30 PM'; links Control room (active) / Lots / Bidders / Projector; pill 'D Dana · Organizer'",
+    "Ledger header: 'Riverside Animal Shelter · Saturday, November 7, 2026', 'Download CSV', title 'Settlement ledger', chips All 86 (selected) / Winners 19 / Won nothing 67, search 'Search bidders or lots'",
+    "AG Grid with columns Paddle, Bidder, Lots won, Glim, Held, To charge (sorted descending), To release; 10 rows; Glim cell shows a mini orb or an em dash; a long lots list truncates with an ellipsis",
+    "Pinned totals row: 'Total', '23 of 24 lots sold', $43,950, $8,160, $35,790",
+    "Status line: 'Showing 10 of 86', 'Lot 22, Golf Lesson with a Pro, had no bids', pager 'Page 1 of 9'",
+    "Rail: 'Bidding closed / Ready to charge'; '$43,950 held with PayPal · 86 bidders / Nothing has been charged yet.'; '$8,160 to charge / $35,790 to release' bar and captions; Checks 'All passed' (every winner's total within their hold; all 96 of Glim's bids within their limits; every hold still valid with PayPal); 'Glim bid for 31 bidders; 9 of them won lots'",
+    "Lime CTA 'Charge 19 winners →'",
+    "Glim bubble 'Receipts are ready / Every winner gets one when you charge.'"
+   ],
+   "data_needed": [
+    "Event: charity, date, status, closed_at",
+    "Per paddle: number, first name + last initial, lots won (short titles), whether Glim placed any bid for them, held (active hold amount), to charge (Σ won), to release (held − to charge), hold kind (PayPal or simulated), settlement item status",
+    "Counts: all / winners / won nothing; lots sold of total; unsold lots",
+    "Totals: held, to charge, to release",
+    "Checks: winners within holds; Glim bids within limits (from glim_actions); holds valid (status, expires_at, honor period, live GET)",
+    "Glim stats: paddles with Glim bids, how many of them won, Glim bid count"
+   ],
+   "server_actions": [
+    "getLedger(eventId) plus SSE subscription",
+    "runChecks(eventId) before enabling the CTA (includes a GET for each real authorization)",
+    "startSettlement(eventId): idempotent; sets the event to settling; one settlement item per paddle (capture if won > 0, otherwise void); queues the worker",
+    "Worker: processes items with idempotency keys, updates row status, issues receipts, retries transient errors",
+    "retryFailedItem(itemId)",
+    "CSV export runs in the browser through the grid",
+    "Demo only (undrawn): closeNextLot, closeBiddingNow, resetDemo"
+   ],
+   "paypal_calls": [
+    "GET /v2/payments/authorizations/{id} for each real hold (the 'still valid' check)",
+    "POST /v2/payments/authorizations/{id}/reauthorize only for a hold past its 3-day honor period but still valid (cron, or just before capture); store the new authorization id",
+    "POST /v2/payments/authorizations/{id}/capture per winner: amount = won total, final_capture: true (releases the rest), invoice_id unique per PayPal account (include the event id), soft_descriptor, PayPal-Request-Id = settlement item id",
+    "POST /v2/payments/authorizations/{id}/void per bidder who won nothing",
+    "Webhooks PAYMENT.CAPTURE.COMPLETED / PENDING / DENIED and PAYMENT.AUTHORIZATION.VOIDED (signature verified) reconcile row status"
+   ],
+   "glim_behaviors": [
+    "Glim column marks paddles Glim bid for",
+    "Check 'All N of Glim's bids stayed within their limits' audits every executed Glim bid against its limit and the hold",
+    "Rail line with Glim's event totals",
+    "Organizer-page bubble says the one thing the page doesn't (deterministic)"
+   ],
+   "realtime": "Live phase: rows, totals, chip counts and rail figures update as bids land (grid transactions with cell flash); the event pill flips LIVE→CLOSED and the CTA enables when checks pass; while charging, each row's status and the rail progress update until done.",
+   "ag_grid_features": [
+    "Theming API: themeQuartz.withParams matching the design (wrapper radius 20, 44px header on Surface, 48px rows, Line row borders, no odd-row color, 16px cell padding, Geist 14 body, Geist Mono uppercase headers, ink focus ring)",
+    "Right-aligned numeric columns (rightAligned type) with currency valueFormatters in Geist Mono",
+    "Sorting with a default sort of To charge descending (header indicator)",
+    "Custom cell renderers: Glim mini orb or em dash; Lots won as comma-joined short titles with ellipsis",
+    "Tooltips on Lots won (tooltipValueGetter) for the full list",
+    "Quick filter bound to the search field (quickFilterText)",
+    "External filter for the All / Winners / Won nothing chips (isExternalFilterPresent / doesExternalFilterPass) with counts",
+    "Pinned bottom totals row (pinnedBottomRowData) with colSpan 2 on the 'Total' label",
+    "Pagination at page size 10 with the built-in panel suppressed; 'Showing 10 of 86' and the pager driven by the pagination API",
+    "CSV export (exportDataAsCsv) from 'Download CSV'",
+    "Column resizing (header separators)",
+    "getRowId + applyTransactionAsync for live updates, with cell change flash",
+    "Cell/row class rules for settlement status (charging, charged, failed)",
+    "Community only: no status bar, set filter, row grouping/aggregation, Excel export or range selection"
+   ],
+   "priority": "must",
+   "notes": "The only approved screen that uses AG Grid. Settlement order: run checks → reauthorize any hold past its honor period → capture winners with final_capture → void everyone else who holds an authorization (including guests with no bids) → issue receipts. Settlement stays a manual organizer action, as designed. Undrawn states the flow needs: live (before close: would-charge figures, CTA disabled, demo close control), charging (per-row progress), charged (summary; receipts issued), a failed or pending row with retry, a failing check. In a judge's private demo only real paddles hold PayPal authorizations; simulated guests must be settled in simulation and labeled honestly (one line, needs approval), since the rail says '$43,950 held with PayPal'."
+  },
+  {
+   "file": "13-web-item-intake.html",
+   "purpose": "Organizer lot editor before the event: title, photos, donor, category, description, starting bid and minimum raise, and the estimated value that drives each winner's tax-deductible line, with previews of where that value appears.",
+   "states_shown": [
+    "Organizer nav: grey 'OPENS SAT 7:00 PM' (before the event); Lots active",
+    "Breadcrumb 'Lots / Wellness / Lot 12'; ghost 'Preview lot page'",
+    "Title 'Spa Day for Two' with outline state pill 'Needs a value'; '21 of 24 lots ready'",
+    "Photos: cover tile (ink outline, 'COVER'), two more photos, 'Add photo' tile",
+    "Details group: Donated by, Category chips (Wellness selected), Description, Starting bid $40, Minimum raise $5",
+    "Rail: 'Estimated value / What would it cost to buy?', help 'A good-faith estimate. Use $0 if it has no market value.', focused value field '$70' with caret, basis note '$35 × 2 passes, from the donor's letter', 'On the lot page' preview line",
+    "Rule 'Only what a winner pays above this value is tax-deductible.' with the $0 note naming Lots 01 and 24; receipt example card ($90 paid, $70, $20, marked Example)",
+    "Lime 'Save lot →' with 'After saving: 22 of 24 lots ready.'; lock line 'You set each estimated value. Each winner's tax-deductible amount is computed from it.'",
+    "Glim bubble '2 lots left after this one / Golf Lesson and Pet Portrait need a value.'"
+   ],
+   "data_needed": [
+    "Lot: number, category, title, donor, description, starting bid, min raise, estimated value (null = needs a value), value basis note, photos (order, cover)",
+    "Event status and opens_at",
+    "Readiness counts (lots with a value / total) and titles of lots still missing one",
+    "Lots valued at $0 (for the note)",
+    "Example paid amount for the receipt preview (illustrative, e.g. value + $20)"
+   ],
+   "server_actions": [
+    "getLot / updateLot (inline edits; whole dollars; value ≥ $0)",
+    "saveLot → recompute readiness; settlement blocks only if a sold lot has no value",
+    "uploadLotPhoto / setCover / removePhoto ('Add photo')",
+    "createLot from the organizer lots index ('Add lot', undrawn)",
+    "Preview opens 05 for this lot"
+   ],
+   "paypal_calls": [],
+   "glim_behaviors": [
+    "Bubble lists the lots still missing a value (deterministic count and titles)",
+    "Glim never proposes or sets an estimated value: the approved design says the organizer sets it and code computes the deduction"
+   ],
+   "realtime": "None needed (single editor); counts refresh after save.",
+   "ag_grid_features": [],
+   "priority": "should",
+   "notes": "Conflicts with the brief: the approved 13 is concept A, a single-lot editor chosen over 13b (an AG Grid list), and it contains no AG Grid; AG Grid appears only on 12 in the approved set. If the plan wants AG Grid for intake (and a destination for the organizer 'Lots' link), the lots index based on 13b's grid must be approved as a new screen. The basis line is an organizer-typed note, not AI. 'Add photo' needs storage: Postgres bytea with a size cap avoids another account; seeded lots use line drawings. In demo seeds keep the never-bid Lot 22 without a value so intake has a real 'Needs a value' example. Undrawn: ready state, new lot, validation error, saved confirmation."
+  },
+  {
+   "file": "14-web-projector.html",
+   "purpose": "Venue screen for the ballroom: amount raised, the event countdown, the next lots to close with their high paddles (Glim's bids marked), how to join from a phone, and the PayPal promise. Display only.",
+   "states_shown": [
+    "Full-ink page, no nav; brand paddle (white handle), 'Riverside Shelter Gala', LIVE pill on raised ink; '24 lots · 86 bidders'",
+    "'Raised so far $7,720 for Riverside Animal Shelter' (144px)",
+    "'Bidding closes in 14:20'",
+    "'Closing next' with '16 more lots at 9:30 PM'",
+    "Closing-now card: Lot 07 tile, 'Closing now · Lot 07 · Dining', 01:02, $380, title, 14 bids, 'Paddle 142 · Bid by Glim'",
+    "Next three rows: countdown, title, high bid, lot number, high paddle, with or without 'Bid by Glim'",
+    "Bottom band: QR code, 'Bid from your phone at riverside-gala.example', 'Every bid is backed by bidding power held with PayPal. Winners pay only for the lots they win.'",
+    "Glim at 1.3× with bubble 'I'm bidding for 29 guests / 84 bids, all within their limits.'"
+   ],
+   "data_needed": [
+    "Event: name, status, closes_at, lot count, bidder count, join URL",
+    "Raised so far = Σ current high bids on open lots + won amounts on closed lots",
+    "Next four open lots by closes_at: illustration, number, category, title, current bid, bid count, high paddle number, whether the high bid was Glim's",
+    "Count of other open lots closing at the event close",
+    "Glim aggregates: paddles with an active plan, Glim bids placed"
+   ],
+   "server_actions": [
+    "getProjectorState (read-only, no personal data)",
+    "SSE subscription"
+   ],
+   "paypal_calls": [],
+   "glim_behaviors": [
+    "'Bid by Glim' marker on high bids Glim placed",
+    "Bubble with live aggregate counts, all within limits"
+   ],
+   "realtime": "Everything: raised total, countdowns (client tick), lot rotation as lots close, high bids and paddles, Glim markers, bubble counts, LIVE→CLOSED.",
+   "ag_grid_features": [],
+   "priority": "should",
+   "notes": "Public-screen rules from the design brief: paddle numbers only; no names, holds, limits, tax copy or payment jargon; no buttons. The URL sits under /organizer but the page carries no personal data, so a shareable projector link is fine. The QR must encode the event's real join URL (each demo event its own). Undrawn: before open, after close (final total), fewer than four open lots. Cheap to build and strong for the video."
+  }
+ ],
+ "data_model": [
+  "Conventions: money in integer cents (USD); times as timestamptz shown in the event's timezone; every bid, limit and Glim change runs in one transaction with row locks (the lot row and the paddle's active hold row) and writes event_log plus pg_notify for SSE.",
+  "events: id, slug, name, charity_name, charity_ein, charity_is_501c3, timezone, currency, opens_at, closes_at, status (draft|scheduled|live|closed|settling|settled), soft_descriptor (≤22 chars, e.g. RIVERSIDEGALA), hold_presets_cents (25000/50000/100000), hold_min_cents, hold_max_cents, pickup_note, join_url, is_demo, demo_expires_at, template_key, closed_at, settled_at",
+  "sessions: id, token_hash (httpOnly cookie, no passwords), event_id, paddle_id (nullable), is_organizer, organizer_name, created_at, last_seen_at",
+  "paddles: id, event_id, number (unique per event, e.g. 142), first_name, last_initial (ledger shows 'Jamie K.'), email (optional, from the PayPal payer), paypal_payer_id, is_simulated, bot_profile (jsonb: budget, target lots, timing), created_at",
+  "lots: id, event_id, number (unique per event), short_title (Glim and ledger copy, e.g. 'Chef's Table'), title, category (dining|experiences|art|wellness|pets), donor_name, description, estimated_value_cents (null = 'Needs a value'), value_basis, starting_bid_cents, min_raise_cents, closes_at (staggered; defaults to the event close), status (draft|open|closed), current_bid_cents, bid_count, high_paddle_id, high_bid_source (guest|guest_max|glim|bot), winning_paddle_id, winning_cents, closed_at, cover_photo_id",
+  "lot_photos: id, lot_id, position, is_cover, kind (illustration|upload), illustration_key, data (bytea, size-capped) or url, mime, alt",
+  "favorites: paddle_id, lot_id, created_at (the heart on 05; drives 'Let Glim watch' and Glim's 'lots you like')",
+  "holds: id, event_id, paddle_id, kind (paypal|simulated), amount_cents, status (pending_approval|authorized|replaced|voided|captured|expired|denied|canceled|failed), paypal_order_id, paypal_authorization_id (current id; reauthorize returns a new one), authorized_at, honor_until (authorized_at + 3 days), expires_at (PayPal expiration_time), reauthorized_at, replaced_by_hold_id (raise), captured_cents, last_synced_at, paypal_debug_id, raw (jsonb); partial unique index: one authorized hold per paddle",
+  "bids: id, lot_id, paddle_id, amount_cents, source (guest|guest_max|glim|bot), glim_action_id, created_at; accepted bids only (refusals are returned to the caller; Glim's are logged in glim_actions); index (lot_id, amount_cents desc)",
+  "bid_limits: id, paddle_id, lot_id, max_cents, owner (guest_max|glim), plan_item_id, active, exhausted_at; one active per paddle and lot; the deterministic engine auto-raises by min_raise up to max_cents",
+  "glim_plans: id, paddle_id, status (proposed|active|paused|ended|superseded), budget_cents (≤ hold), proposal (jsonb: the validated model output), model, source_message_id, confirmed_at, paused_at, ended_at, version",
+  "glim_plan_items: id, plan_id, lot_id, priority, max_cents, status (watching|winning|at_limit|outbid_over_limit|won|lost|skipped)",
+  "glim_actions: id, paddle_id, plan_id, lot_id, kind (plan_started|bid|raise|limit_reached|lot_won|lot_lost|paused|resumed|plan_edited|proposal_rejected|nudge), amount_cents, limit_cents, hold_cents_at_time, decision (executed|rejected), reject_reason, message (rendered sentence), chip (winning|closed|none), trigger_bid_id, created_at; feeds 07 cards, the 10 feed, the 11 recap, the 12 check and the 14 counts",
+  "chat_messages: id, paddle_id, role (guest|glim), text, card_type (plan|event|action|none), card (jsonb), plan_id, model, input_tokens, output_tokens, latency_ms, error, created_at",
+  "settlements: id, event_id, status (running|done|done_with_errors), started_by_session_id, started_at, finished_at, to_charge_cents, to_release_cents, winners, non_winners, checks (jsonb)",
+  "settlement_items: id, settlement_id, paddle_id, hold_id, action (capture|void|simulate), amount_cents, released_cents, status (queued|processing|succeeded|pending|failed), paypal_request_id (idempotency key), paypal_capture_id, error_code, attempts, completed_at; unique (settlement_id, paddle_id)",
+  "receipts: id, event_id, paddle_id, number ('1107-142'), issued_at, hold_cents, hold_authorized_at, paid_cents, released_cents, deductible_cents, paypal_capture_id, statement_descriptor, lines (jsonb: lot, won_at, paid, estimated value, deductible, bid_by, limit), glim_recap, emailed_at",
+  "paypal_webhook_events: paypal_event_id (unique, for idempotency), event_type, resource_type, resource_id, verified, payload (jsonb), received_at, processed_at, error",
+  "event_log: id (bigserial, used as the SSE Last-Event-ID), event_id, paddle_id (null = public), type (bid|lot_closed|event_status|hold|glim|settlement), payload (jsonb), created_at; inserted in the same transaction as the change, then pg_notify",
+  "Invariant checked in placeBid, setMaxBid, confirmPlan and editPlan: Σ over the paddle's lots of commitment ≤ active hold amount, where commitment = the active limit's max if one exists, else the current high bid if leading, else the won amount if closed and won, else 0. Display 'left' = hold − high bids − won amounts (10 labels the reserved part as Glim's room). Bids after closes_at are refused whether or not the worker has closed the lot.",
+  "Seed sources (numbers already reconcile across 05–14): the 24-lot table (category, title, donor, estimated value, starting bid, min raise), the ledger names and amounts, the projector activity and Jamie's story come from the approved mockups 10–14; the seed now holds them in src/server/demo/ (template.ts, roster.ts, story.ts)."
+ ],
+ "golden_path": [
+  "1. The judge opens the hosted site (Fairhold home, undrawn) and clicks 'Start a demo gala'. The server clones the Riverside Shelter Gala template into a private event: 24 seeded lots with estimated values; about 85 simulated guests with simulated holds and scripted bidding; lot closes compressed to about 15 minutes (8 staggered, the rest at the event close). The browser session gets a guest paddle (the judge types a first name) and organizer rights for this event only.",
+  "2. 09 Set your bidding power ('Not set' in the nav). The judge picks $500 and clicks 'Hold $500 with PayPal'. The server creates an Orders v2 order with intent AUTHORIZE; the PayPal sandbox window opens; the judge logs in with the sandbox buyer account listed in the testing instructions and approves; the return page calls /authorize; the authorization id and expiration are stored; the window closes and the nav reads '$500 / $500'.",
+  "3. 08 Lots: tiles update live as simulated guests bid. The judge opens Lot 07 (05), keeps the next minimum and clicks 'Place bid'. The server checks lot open, minimum raise and Σ commitments ≤ $500; the card shows 'You're winning' and the nav shows what is left. No PayPal call is made per bid.",
+  "4. A scripted guest outbids the judge on a second lot; 08 shows 'You're outbid' with 'Bid again'. Optional: a bid larger than the remaining bidding power is refused with the reason (code enforces).",
+  "5. 07: the judge clicks the orb or 'Let Glim bid for me' and writes a budget and wishes (e.g. '$500. I really want the chef's dinner. Spa only under $120.'). Claude returns a plan; code validates it (each limit ≥ next minimum, total ≤ hold) and shows the plan card. The judge clicks 'Start bidding'.",
+  "6. Glim acts inside the plan: an opening bid on Spa Day; when a scripted guest bids on Chef's Table, the engine raises to the limit and Glim posts 'Someone bid $360. I raised to $380, your limit for this lot.' Asking Glim to bid past the hold gets a refusal and an offer to raise bidding power.",
+  "7. 10 My paddle: hold vs winning bids, Glim's room, each lot with Glim's limit, the activity log, Pause and Edit plan; a nudge appears when a plan lot nears its close at the limit.",
+  "8. Organizer: the judge switches to the organizer view (undrawn switch). 12 shows the live ledger (AG Grid) with the judge's row among simulated guests; 14 Projector in another tab shows the room screen updating live.",
+  "9. Close or fast-forward: lots close on their own compressed schedule, or the demo-only controls 'Close next lot' and 'Close bidding now' set close times to now. The worker closes lots, fixes winners and marks the event closed; bids after close are refused regardless of worker timing.",
+  "10. 12 switches to 'Bidding closed · Ready to charge' and runs the checks (winners within holds, Glim bids within limits, a GET on each real authorization). The judge clicks 'Charge N winners'.",
+  "11. The worker settles: the judge's authorization is captured for the won total with final_capture: true (the rest is released), or voided if the judge won nothing; simulated guests settle in simulation; rows update live; receipts are issued; PayPal webhooks (PAYMENT.CAPTURE.COMPLETED / PAYMENT.AUTHORIZATION.VOIDED) reconcile.",
+  "12. 11 Receipt in the guest view: amount paid with PayPal and amount released, the PayPal transaction ID (the real sandbox capture id), per-lot estimated value and tax-deductible line, Glim's recap, 'Download receipt' (PDF). The judge can confirm the capture and the released hold in the sandbox buyer account.",
+  "13. Seeing both PayPal outcomes in one run: open a private window as a second guest, hold an amount, bid low and lose; that paddle's authorization is voided at settlement. 'Raise bidding power' also produces a real void (the old hold is released once the new one is approved).",
+  "14. Reset: 'Reset demo' (or 'Start a new demo') voids any live sandbox authorizations of that demo and re-seeds; abandoned demos are voided and deleted automatically after a few hours. Holds created before submission cannot last until Dec 15 (29-day validity), so every judge creates fresh holds.",
+  "15. Video: the same path on a showcase event with 2–3 real sandbox buyers (one loses, so the void is real) plus simulated guests, using fast-forward to stay under 3 minutes."
+ ],
+ "unbuilt_screens_needed": [
+  "MUST · Fairhold home + join: one page with 'Start a demo gala' (creates the private demo event) and a first-name field that assigns a paddle; says where the sandbox buyer login is; carries the Fairhold name. Why: the flow needs an entry point and a guest identity without passwords or account creation.",
+  "MUST · PayPal popup return/cancel pages: 'Approving your hold…', 'Approved, you can close this window', 'Canceled', and the full-page redirect used when the popup is blocked. Why: the hold approval round trip needs a landing page.",
+  "MUST · Role switch and demo controls: a menu on the paddle/organizer pill to switch Guest view ↔ Organizer view (demo events only), plus demo-only 'Close next lot', 'Close bidding now' and 'Reset demo'. Why: judges must reach 12 and close the event without waiting.",
+  "MUST · Control room states not drawn: live (before close), charging, charged, a failed row or failed check, and one honest line that simulated guests settle without PayPal. Why: 12 is drawn only at 'Ready to charge'.",
+  "MUST · Receipt states not drawn: won nothing (authorization voided, never charged) and closed-not-yet-charged. Why: a judge who loses, or looks before the organizer charges, would otherwise land on an undesigned page.",
+  "MUST · One 'states sheet' image for variants built from approved parts: 05 outbid / no bid / not set / not enough bidding power / Max… entry / closed; 08 not-set band and closed tiles; 07 first open / thinking / error / plan edit / paused / off duty; 09 Other… / waiting / canceled / raise mode; 10 empty / paused; 13 ready / new lot; 14 before open / after close; plus about 10 new lot drawings. Why: the user approves every visible change, and one sheet keeps it to one round.",
+  "SHOULD · Organizer Lots index (/organizer/lots) as an AG Grid based on 13b's grid without its rail: inline estimated-value editing, Ready / Needs a value chips, search, pager; a row opens 13. Why: the organizer 'Lots' link needs a destination, and it adds a second, editable AG Grid for the sponsor prize (13 itself has none).",
+  "SHOULD · 'How it works' page for the guest nav, reusing 09's 'How the hold works' panel and Glim's rule line; or approve removing the link. Why: a dead nav link hurts the 'complete product experience' criterion.",
+  "SHOULD · Phone layout of the guest pages (single column of 08, 05, 09, 10, 11, with the chat as a bottom sheet). Why: the projector tells the room to bid from a phone and the brief says phones or laptops, but every approved guest screen is desktop.",
+  "COULD · Bidders page for the organizer nav: an AG Grid of paddles with PayPal hold status (authorized, honor period, expires, reauthorized); or approve removing the link.",
+  "CUT · Organizer event setup, password sign-up/sign-in, multi-event admin, and a Glim chat on organizer pages: demo events are cloned from the seeded template, and on organizer pages the orb only shows its bubble."
+ ]
+}

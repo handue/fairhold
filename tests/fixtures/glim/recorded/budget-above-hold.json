@@ -1,0 +1,40 @@
+{
+  "name": "budget-above-hold",
+  "description": "A budget above the $500 hold. The first proposal is rejected (budget_over_available) and goes back to the model once; the retry plans within the hold.",
+  "guestText": "$600. Get me the chef's dinner, and the spa if it stays under $120.",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "tool_use",
+          "name": "propose_plan",
+          "input": {
+            "budget_dollars": 600,
+            "items": [
+              { "lot_number": 7, "priority": 1, "cap_dollars": null },
+              { "lot_number": 12, "priority": 2, "cap_dollars": 120 }
+            ]
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "content": [
+        { "type": "text", "text": "Your bidding power is $500, so I planned within it." },
+        {
+          "type": "tool_use",
+          "name": "propose_plan",
+          "input": {
+            "budget_dollars": 500,
+            "items": [
+              { "lot_number": 7, "priority": 1, "cap_dollars": null },
+              { "lot_number": 12, "priority": 2, "cap_dollars": 120 }
+            ]
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    }
+  ]
+}

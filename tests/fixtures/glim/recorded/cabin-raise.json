@@ -1,0 +1,18 @@
+{
+  "name": "cabin-raise",
+  "description": "Day 3's cabin request: it doesn't fit the bidding power, so Glim says so and suggests a raise; the guest approves any new hold with PayPal.",
+  "guestText": "Can you also get me the cabin?",
+  "responses": [
+    {
+      "content": [
+        { "type": "text", "text": "The Cabin Stay's next bid is $660, more than your bidding power has room for. Want to raise it?" },
+        {
+          "type": "tool_use",
+          "name": "suggest_hold_amount",
+          "input": { "amount_dollars": 1000, "lot_numbers": [3] }
+        }
+      ],
+      "stop_reason": "tool_use"
+    }
+  ]
+}
