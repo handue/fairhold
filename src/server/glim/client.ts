@@ -22,6 +22,8 @@ import {
   type GlimConfig,
   type GlimMode,
 } from "./config";
+import { AUTOPILOT_SYSTEM_PROMPT } from "./autopilot/prompt";
+import { DECISION_SCHEMA } from "./autopilot/schema";
 import { FALLBACK_LINE } from "./copy";
 import { GLIM_SYSTEM_PROMPT } from "./prompt";
 import { createRecordedGlimModel } from "./recorded";
@@ -30,12 +32,19 @@ import type { GlimTranscript } from "./transcript";
 
 export type GlimMessage = Anthropic.Beta.BetaMessage;
 
+/** chat: a guest's message to Glim (tools, transcript). autopilot: one stateless decision. */
+export type GlimRequestProfile = "chat" | "autopilot";
+
 export interface GlimModelRequest {
   messages: GlimTranscript;
   /** This turn's guest text; recorded mode picks its fixture by it. */
   guestText: string;
   /** 0 for a guest message's first call, 1 for the single retry after a rejected proposal. */
   attempt: number;
+  /** Which request to build; chat when omitted. */
+  profile?: GlimRequestProfile;
+  /** Recorded mode matches this before the guest text (autopilot decisions). */
+  fixtureKey?: string;
 }
 
 export interface GlimModelHooks {
@@ -68,6 +77,27 @@ export function buildGlimRequest(messages: GlimTranscript): BetaMessageStreamPar
   };
 }
 
+/** Thinking counts toward max_tokens; a decision is one small JSON object after low-effort thinking. */
+export const AUTOPILOT_MAX_TOKENS = 4_096;
+
+/**
+ * The autopilot's request (docs/planning/glim-autopilot.md §4.3): no tools, and structured
+ * output, so the reply is exactly one schema-valid decision. The system prompt is its own cached
+ * prefix; each review is new, so there is no top-level cache marker to write and never read.
+ */
+export function buildAutopilotRequest(messages: GlimTranscript): BetaMessageStreamParams {
+  return {
+    model: GLIM_MODEL,
+    max_tokens: AUTOPILOT_MAX_TOKENS,
+    betas: [SERVER_SIDE_FALLBACK_BETA],
+    fallbacks: "default",
+    thinking: { type: "adaptive" },
+    output_config: { effort: GLIM_EFFORT, format: { type: "json_schema", schema: DECISION_SCHEMA } },
+    system: [{ type: "text", text: AUTOPILOT_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: [...messages],
+  };
+}
+
 /** The slice of the SDK client Glim uses, so tests can stand in for it. */
 export interface StreamingMessagesClient {
   beta: {
@@ -92,7 +122,9 @@ export function createLiveGlimModel(options: { apiKey: string } | { client: Stre
   return {
     mode: "live",
     async respond(request, hooks = {}) {
-      const stream = client.beta.messages.stream(buildGlimRequest(request.messages), { signal: hooks.signal });
+      const body =
+        request.profile === "autopilot" ? buildAutopilotRequest(request.messages) : buildGlimRequest(request.messages);
+      const stream = client.beta.messages.stream(body, { signal: hooks.signal });
       if (hooks.onText) stream.on("text", hooks.onText);
       return stream.finalMessage();
     },

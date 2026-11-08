@@ -57,6 +57,12 @@ describe("parseServerEnv", () => {
     expect(() => parseServerEnv({ ...production, ENGINE_ENABLED: "yes" })).toThrow(/ENGINE_ENABLED/);
   });
 
+  it("runs Glim's autopilot unless GLIM_AUTOPILOT=off", () => {
+    expect(parseServerEnv(production).GLIM_AUTOPILOT).toBe("on");
+    expect(parseServerEnv({ ...production, GLIM_AUTOPILOT: "off" }).GLIM_AUTOPILOT).toBe("off");
+    expect(() => parseServerEnv({ ...production, GLIM_AUTOPILOT: "false" })).toThrow(/GLIM_AUTOPILOT/);
+  });
+
   it("gives Glim a daily token budget of 1,000,000 unless set to a positive whole number", () => {
     expect(parseServerEnv(production).GLIM_DAILY_TOKEN_BUDGET).toBe(1_000_000);
     expect(parseServerEnv({ ...production, GLIM_DAILY_TOKEN_BUDGET: "250000" }).GLIM_DAILY_TOKEN_BUDGET).toBe(250_000);

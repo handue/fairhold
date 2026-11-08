@@ -73,6 +73,8 @@ export interface GlimTurnInput {
   model: GlimModel;
   onEvent?: (event: GlimStreamEvent) => void;
   signal?: AbortSignal;
+  /** Whether Glim's autopilot is on (GLIM_AUTOPILOT): plan cards then carry its "ON MY OWN" rules. */
+  autopilot?: boolean;
 }
 
 /** The validated proposal behind a plan card, for glim_plans.proposal. */
@@ -83,6 +85,12 @@ export interface GlimProposalRecord {
   /** The intent the card was built from, after any repair. */
   intent: PlanIntent;
   adjusted: boolean;
+  /**
+   * The first budget the model parsed from the guest's words this turn, before a rejected
+   * proposal was lowered on the retry, and even when the first call left it out and only the
+   * retry carried it: the budget the guest named (the mandate's B). Null when they named none.
+   */
+  namedBudgetCents: number | null;
 }
 
 export type GlimTurnError = GlimFailure | CapReason | "empty_message" | "message_too_long";
@@ -116,8 +124,14 @@ function invalidInput(message: string): ValidationIssue {
   return { reason: "invalid_tool_input", lotNumber: null, lotId: null, amountCents: null, limitCents: null, message };
 }
 
+interface CardContext {
+  /** The first plan budget parsed this turn, null until one is (see GlimProposalRecord.namedBudgetCents). */
+  namedBudgetCents: number | null;
+  autopilot: boolean;
+}
+
 /** The first attempt only checks; the retry is repaired by the clamp if it still breaks a rule. */
-function evaluateToolCall(block: ToolUseBlock, state: GlimState, final: boolean): Evaluation {
+function evaluateToolCall(block: ToolUseBlock, state: GlimState, final: boolean, context: CardContext): Evaluation {
   const parsed = parseToolCall(block.name, block.input);
   if (!parsed.ok) {
     const issues = [invalidInput(parsed.message)];
@@ -126,12 +140,13 @@ function evaluateToolCall(block: ToolUseBlock, state: GlimState, final: boolean)
 
   if (parsed.call.kind === "plan") {
     const { intent } = parsed.call;
+    const { namedBudgetCents, autopilot } = context;
     const check = checkPlan(intent, state);
     if (check.issues.length === 0 && check.allocation) {
       return {
         kind: "shown",
-        card: buildPlanCard({ tool: intent.tool, allocation: check.allocation, state, adjustments: [] }),
-        proposal: { tool: block.name, input: block.input, intent, adjusted: false },
+        card: buildPlanCard({ tool: intent.tool, allocation: check.allocation, state, adjustments: [], intent, namedBudgetCents, autopilot }),
+        proposal: { tool: block.name, input: block.input, intent, adjusted: false, namedBudgetCents },
         adjustments: [],
       };
     }
@@ -140,8 +155,16 @@ function evaluateToolCall(block: ToolUseBlock, state: GlimState, final: boolean)
     if (!clamped.allocation) return { kind: "nothing", adjustments: clamped.adjustments };
     return {
       kind: "shown",
-      card: buildPlanCard({ tool: intent.tool, allocation: clamped.allocation, state, adjustments: clamped.adjustments }),
-      proposal: { tool: block.name, input: block.input, intent: clamped.intent, adjusted: true },
+      card: buildPlanCard({
+        tool: intent.tool,
+        allocation: clamped.allocation,
+        state,
+        adjustments: clamped.adjustments,
+        intent: clamped.intent,
+        namedBudgetCents,
+        autopilot,
+      }),
+      proposal: { tool: block.name, input: block.input, intent: clamped.intent, adjusted: true, namedBudgetCents },
       adjustments: clamped.adjustments,
     };
   }
@@ -223,6 +246,9 @@ export async function runGlimTurn(input: GlimTurnInput): Promise<GlimTurnResult>
   if (!caps.ok) return answerWithoutModel(CAP_REACHED_LINE, caps.reason);
 
   const snapshot = buildStateSnapshot(state);
+  // The first budget a plan proposal parsed this turn: the budget the guest named. A retry may
+  // lower it to fit the hold, or a first call may leave it out; neither changes the guest's words.
+  let namedBudgetCents: number | null = null;
   // The guest's turn, then the snapshot as a system message right after it, as the API requires.
   const pending: TranscriptMessage[] = [guestMessage(guestText), snapshotMessage(snapshot.text)];
   const guardTemplate = amountGuardLine(state.holdCents, biddingPowerFigures(state)?.leftCents ?? null);
@@ -261,7 +287,14 @@ export async function runGlimTurn(input: GlimTurnInput): Promise<GlimTurnResult>
       });
     }
 
-    const evaluation = evaluateToolCall(toolUse, state, attempt === 1);
+    const parsedCall = parseToolCall(toolUse.name, toolUse.input);
+    if (namedBudgetCents === null && parsedCall.ok && parsedCall.call.kind === "plan") {
+      namedBudgetCents = parsedCall.call.intent.budgetCents;
+    }
+    const evaluation = evaluateToolCall(toolUse, state, attempt === 1, {
+      namedBudgetCents,
+      autopilot: input.autopilot ?? true,
+    });
     // Parallel tool use is disabled, so any extra call is only answered, never shown.
     const answer = (body: string, isError: boolean) =>
       toolResultMessage([

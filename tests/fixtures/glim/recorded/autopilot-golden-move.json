@@ -1,0 +1,20 @@
+{
+  "name": "autopilot-golden-move",
+  "description": "Recorded live from claude-opus-5-5 on 2026-11-07 (npm run glim:spike -- --autopilot golden-move --record).",
+  "fixtureKey": "autopilot:limit_exhausted:7:9",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"action\":\"change\",\"lots\":[{\"lot_number\":12,\"priority\":1,\"max_dollars\":null},{\"lot_number\":9,\"priority\":2,\"max_dollars\":null}],\"raise_to_dollars\":null,\"reason\":\"top_lot_out_of_reach\",\"why\":\"The chef's dinner is now beyond your budget, so I'm putting the freed money toward your Wine Tasting backup while keeping Spa Day.\"}"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ]
+}

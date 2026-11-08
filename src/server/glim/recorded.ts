@@ -1,8 +1,9 @@
 /**
  * GLIM_MODE=recorded: replays model responses stored in tests/fixtures/glim/recorded instead of
  * calling the API, so keyless local mode, CI and the demo without a key behave like live Glim.
- * A fixture is matched on the guest's text; its responses are the first attempt and, when the
- * first proposal was meant to be rejected, the retry.
+ * A chat fixture is matched on the guest's text; its responses are the first attempt and, when
+ * the first proposal was meant to be rejected, the retry. An autopilot fixture is matched on its
+ * fixtureKey (src/server/glim/autopilot/prompt.ts) and holds the decision JSON as text.
  */
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
@@ -28,12 +29,17 @@ const recordedResponseSchema = z.object({
     .default({ input_tokens: 0, output_tokens: 0 }),
 });
 
-export const recordingSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().optional(),
-  guestText: z.string().min(1),
-  responses: z.array(recordedResponseSchema).min(1),
-});
+export const recordingSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    guestText: z.string().min(1).optional(),
+    fixtureKey: z.string().min(1).optional(),
+    responses: z.array(recordedResponseSchema).min(1),
+  })
+  .refine((recording) => (recording.guestText === undefined) !== (recording.fixtureKey === undefined), {
+    message: "a recording needs exactly one of guestText and fixtureKey",
+  });
 
 export type Recording = z.infer<typeof recordingSchema>;
 export type RecordedResponse = Recording["responses"][number];
@@ -128,25 +134,40 @@ function streamText(text: string, onText: (delta: string) => void): void {
   for (const piece of text.match(/\S+\s*|\s+/g) ?? []) onText(piece);
 }
 
+interface RecordingIndex {
+  byText: Map<string, Recording>;
+  byKey: Map<string, Recording>;
+}
+
 export function createRecordedGlimModel(source: { dir: string } | { recordings: readonly Recording[] }): GlimModel {
-  let byText: Map<string, Recording> | undefined;
-  const index = () => {
-    if (byText) return byText;
+  let built: RecordingIndex | undefined;
+  const index = (): RecordingIndex => {
+    if (built) return built;
     const recordings = "dir" in source ? loadRecordings(source.dir) : source.recordings;
-    byText = new Map();
+    built = { byText: new Map(), byKey: new Map() };
     for (const recording of recordings) {
-      const key = normalizeGuestText(recording.guestText);
-      if (byText.has(key)) throw new Error(`Two Glim recordings match the same guest text: ${recording.name}`);
-      byText.set(key, recording);
+      if (recording.fixtureKey !== undefined) {
+        if (built.byKey.has(recording.fixtureKey)) {
+          throw new Error(`Two Glim recordings have the same fixture key: ${recording.name}`);
+        }
+        built.byKey.set(recording.fixtureKey, recording);
+        continue;
+      }
+      const key = normalizeGuestText(recording.guestText ?? "");
+      if (built.byText.has(key)) throw new Error(`Two Glim recordings match the same guest text: ${recording.name}`);
+      built.byText.set(key, recording);
     }
-    return byText;
+    return built;
   };
 
   return {
     mode: "recorded",
     async respond(request, hooks = {}) {
       if (hooks.signal?.aborted) throw new APIUserAbortError();
-      const recording = index().get(normalizeGuestText(request.guestText));
+      const { byKey, byText } = index();
+      // A keyed request never falls back to text: an unrecorded decision gets NO_MATCH, so the rule decides.
+      const recording =
+        request.fixtureKey !== undefined ? byKey.get(request.fixtureKey) : byText.get(normalizeGuestText(request.guestText));
       const responses = recording?.responses ?? [NO_MATCH];
       const response = responses[Math.min(request.attempt, responses.length - 1)] ?? NO_MATCH;
       const message = toMessage(response);

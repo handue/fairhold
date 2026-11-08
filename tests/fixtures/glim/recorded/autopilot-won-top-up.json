@@ -1,0 +1,20 @@
+{
+  "name": "autopilot-won-top-up",
+  "description": "Recorded live from claude-opus-5-5 on 2026-11-07 (npm run glim:spike -- --autopilot won-top-up --record).",
+  "fixtureKey": "autopilot:lot_won:12:9",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"action\":\"change\",\"lots\":[{\"lot_number\":9,\"priority\":1,\"max_dollars\":null}],\"raise_to_dollars\":null,\"reason\":\"money_freed\",\"why\":\"Spa Day is yours, so I put the little left over toward Wine Tasting in case someone bids before it closes.\"}"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ]
+}

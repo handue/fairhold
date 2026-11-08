@@ -8,6 +8,13 @@
       "when": 1793830794891,
       "tag": "0000_initial_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794085220060,
+      "tag": "0001_glim_autopilot",
+      "breakpoints": true
     }
   ]
 }

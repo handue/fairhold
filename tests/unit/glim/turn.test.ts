@@ -226,3 +226,54 @@ describe("runGlimTurn", () => {
     ]);
   });
 });
+
+describe("plan cards for the autopilot", () => {
+  it("record the budget the guest named before the retry lowered it", async () => {
+    const outcome = await turn({
+      model: recorded,
+      guestText: "$600. Get me the chef's dinner, and the spa if it stays under $120.",
+    }).result;
+    expect(outcome.proposal?.namedBudgetCents).toBe(60_000);
+    expect(outcome.card).toMatchObject({ type: "plan", budgetCents: 50_000, namedBudgetCents: 60_000, autopilot: true });
+  });
+
+  it("list the guest's open hearted lots as backups, never a planned or excluded one, at most four", async () => {
+    const state = createGoldenState();
+    state.favoriteLotNumbers = [3, 5, 7, 9, 12, 14, 18, 21];
+    const { model } = scriptedModel(() =>
+      modelReply([toolUseBlock("propose_plan", { ...goldenProposal(), backup_lot_numbers: [22], excluded_lot_numbers: [3] })]),
+    );
+    const outcome = await turn({ model, state }).result;
+    if (outcome.card?.type !== "plan") throw new Error("expected a plan card");
+    // The named backup first, then hearted lots by closing time; Lot 03 is ruled out, 07 and 12 planned.
+    expect(outcome.card.backups.map((backup) => [backup.lotNumber, backup.source])).toEqual([
+      [22, "words"],
+      [5, "heart"],
+      [9, "heart"],
+      [21, "heart"],
+    ]);
+    expect(outcome.card.excludedLotNumbers).toEqual([3]);
+    expect(outcome.card.backups[1]?.statusText).toBe("Current bid $150");
+  });
+
+  it("are sent back once when a lot is both planned and excluded", async () => {
+    let call = 0;
+    const { model } = scriptedModel(() =>
+      modelReply([
+        toolUseBlock("propose_plan", { ...goldenProposal(), excluded_lot_numbers: call++ === 0 ? [12] : [] }),
+      ]),
+    );
+    const outcome = await turn({ model }).result;
+    expect(outcome.attempts).toBe(2);
+    expect(outcome.rejections.map((record) => record.rejectReason)).toEqual(["excluded_and_planned"]);
+    expect(planItems(outcome.card)).toEqual([
+      [7, 38_000],
+      [12, 12_000],
+    ]);
+  });
+
+  it("leave the ON MY OWN rules out when the autopilot is off", async () => {
+    const outcome = await turn({ model: recorded, autopilot: false }).result;
+    expect(outcome.card).toMatchObject({ type: "plan", autopilot: false, backups: [], namedBudgetCents: 50_000 });
+  });
+});

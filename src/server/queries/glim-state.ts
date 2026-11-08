@@ -8,10 +8,12 @@ import { sql } from "drizzle-orm";
 
 import { getDatabaseClient, type DatabaseClient } from "@/server/db/client";
 import { getBiddingPower, getCommitments, nextMinimumCents, type LotCommitment } from "@/server/engine";
+import { parseMandate } from "@/server/glim/mandate";
 import type {
   GlimCommitment,
   GlimLotState,
   GlimPlanState,
+  GlimRecentDecision,
   GlimState,
   PlanItemStatus,
   PlanStatus,
@@ -40,7 +42,7 @@ type PaddleRow = {
   hold_max_cents: number | null;
 };
 
-type PlanRow = { id: string; status: PlanStatus; budget_cents: number };
+type PlanRow = { id: string; status: PlanStatus; budget_cents: number; mandate: unknown };
 type PlanItemRow = { lot_number: number; priority: number; max_cents: number; status: PlanItemStatus };
 
 /** Null when the paddle does not exist. */
@@ -59,13 +61,14 @@ export async function loadGlimState(
   if (!paddle) return null;
 
   const reads = createPostgresGuestSource(db);
-  const [now, lots, viewerLots, power, commitments, plan] = await Promise.all([
+  const [now, lots, viewerLots, power, commitments, plan, recentDecisions] = await Promise.all([
     query.now ?? reads.currentTime().then((instant) => new Date(instant)),
     reads.listLots(paddle.event_id),
     reads.listViewerLots(paddle.event_id, paddle.paddle_id),
     getBiddingPower([paddle.paddle_id], pool),
     getCommitments([paddle.paddle_id], pool),
     loadPlan(db, paddle.paddle_id),
+    loadRecentDecisions(db, paddle.paddle_id),
   ]);
 
   const relations = indexViewerLots(viewerLots);
@@ -98,7 +101,31 @@ export async function loadGlimState(
       .flatMap((relation) => lotNumberById.get(relation.lotId) ?? [])
       .sort((a, b) => a - b),
     openedFromLotNumber: query.openedFromLotNumber ?? null,
+    recentDecisions,
   };
+}
+
+type DecisionRow = { at_ms: number; message: string; detail: unknown };
+
+/** Glim's last three autopilot decisions, oldest first, with every amount their sentences show. */
+async function loadRecentDecisions(db: DatabaseClient["db"], paddleId: string): Promise<GlimRecentDecision[]> {
+  const { rows } = await db.execute<DecisionRow>(sql`
+    select (extract(epoch from created_at) * 1000)::float8 as at_ms, message, detail
+    from glim_actions
+    where paddle_id = ${paddleId} and kind in ('autopilot_changed', 'autopilot_raise_prepared')
+    order by created_at desc, id desc
+    limit 3
+  `);
+  return rows
+    .map((row) => {
+      const amounts = (row.detail as { amountsCents?: unknown } | null)?.amountsCents;
+      return {
+        at: new Date(row.at_ms),
+        message: row.message,
+        amountsCents: Array.isArray(amounts) ? amounts.filter((value): value is number => Number.isSafeInteger(value)) : [],
+      };
+    })
+    .reverse();
 }
 
 function glimLot(lot: LotRecord, paddleId: string, relation: ViewerLotRecord | undefined): GlimLotState {
@@ -135,7 +162,7 @@ export function glimCommitment(row: LotCommitment, lotNumber: number): GlimCommi
 /** The running plan (active or paused), else the latest proposal; ended and superseded ones never. */
 async function loadPlan(db: DatabaseClient["db"], paddleId: string): Promise<GlimPlanState | null> {
   const { rows } = await db.execute<PlanRow>(sql`
-    select id::text as id, status, budget_cents
+    select id::text as id, status, budget_cents, mandate
     from glim_plans
     where paddle_id = ${paddleId} and status in ('proposed', 'active', 'paused')
     order by (status <> 'proposed') desc, created_at desc, version desc
@@ -151,10 +178,13 @@ async function loadPlan(db: DatabaseClient["db"], paddleId: string): Promise<Gli
     where i.plan_id = ${plan.id}
     order by i.priority, l.number
   `);
+  // Read exactly as confirmPlan reads it, so a change card states the B confirming it would keep.
+  const mandate = parseMandate(plan.mandate);
   return {
     id: plan.id,
     status: plan.status,
     budgetCents: plan.budget_cents,
+    mandate: mandate === null ? null : { budgetCents: mandate.budgetCents },
     items: items.rows.map((item) => ({
       lotNumber: item.lot_number,
       priority: item.priority,

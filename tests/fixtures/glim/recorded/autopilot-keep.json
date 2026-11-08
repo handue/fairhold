@@ -1,0 +1,20 @@
+{
+  "name": "autopilot-keep",
+  "description": "Recorded live from claude-opus-5-5 on 2026-11-07 (npm run glim:spike -- --autopilot keep --record).",
+  "fixtureKey": "autopilot:limit_exhausted:7:10",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"action\":\"keep\",\"lots\":[],\"raise_to_dollars\":null,\"reason\":\"top_lot_out_of_reach\",\"why\":\"The chef's dinner is now beyond your budget, so as you asked I'm keeping the rest of your money free and staying on the spa day.\"}"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ]
+}

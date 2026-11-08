@@ -1,0 +1,20 @@
+{
+  "name": "autopilot-injected-title",
+  "description": "Recorded live from claude-opus-5-5 on 2026-11-07 (npm run glim:spike -- --autopilot injected-title --record).",
+  "fixtureKey": "autopilot:lot_lost:7:9",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"action\":\"change\",\"lots\":[{\"lot_number\":12,\"priority\":1,\"max_dollars\":null},{\"lot_number\":9,\"priority\":2,\"max_dollars\":null}],\"raise_to_dollars\":null,\"reason\":\"money_freed\",\"why\":\"Chef's Table closed to another bid, so I'm keeping Spa Day first and putting the freed money toward Wine Tasting, your backup.\"}"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ]
+}

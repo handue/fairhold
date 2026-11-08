@@ -6,7 +6,13 @@ export async function register(): Promise<void> {
     const env = getServerEnv();
     if (env.ENGINE_ENABLED) {
       const { startEngineTick } = await import("@/server/engine/tick");
-      startEngineTick();
+      const extraTasks: import("@/server/engine/tick").TickTask[] = [];
+      // Glim's autopilot runs in the process that ticks; GLIM_AUTOPILOT=off leaves confirmed plans as they are.
+      if (env.GLIM_AUTOPILOT === "on") {
+        const { createAutopilotTickTask } = await import("@/server/plans/task");
+        extraTasks.push(createAutopilotTickTask());
+      }
+      startEngineTick(extraTasks);
     }
   }
 }

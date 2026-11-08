@@ -26,7 +26,8 @@ import type {
  * once its lock is held (see lockLots), so app-server clock skew never decides it.
  */
 
-const BEGIN = "begin; set local lock_timeout = '5s'; set local statement_timeout = '15s'";
+/** How every engine transaction starts; Glim's plan transactions (src/server/plans) start the same way. */
+export const ENGINE_TRANSACTION_BEGIN = "begin; set local lock_timeout = '5s'; set local statement_timeout = '15s'";
 /** Deadlocks and serialization failures are retried; with the fixed lock order they should not occur. */
 const RETRYABLE_SQLSTATES: ReadonlySet<string> = new Set(["40001", "40P01"]);
 const MAX_ATTEMPTS = 3;
@@ -40,7 +41,7 @@ export function createPgStore(pool: pg.Pool): EngineStore {
         const client = await pool.connect();
         let connectionBroken = false;
         try {
-          await client.query(BEGIN);
+          await client.query(ENGINE_TRANSACTION_BEGIN);
           const result = await work(new PgEngineTx(client));
           await client.query("commit");
           return result;
@@ -55,6 +56,20 @@ export function createPgStore(pool: pg.Pool): EngineStore {
           client.release(connectionBroken);
         }
       }
+    },
+  };
+}
+
+/**
+ * An engine store over a transaction its caller already began on `client`: the engine's actions
+ * run inside it and write nothing on a refusal, and the caller owns begin, commit, rollback and
+ * any retry. This is how src/server/plans/apply.ts makes a plan change and its records commit
+ * together or not at all.
+ */
+export function createTransactionStore(client: pg.ClientBase): EngineStore {
+  return {
+    async transaction<T>(work: (tx: EngineTx) => Promise<T>): Promise<T> {
+      return work(new PgEngineTx(client));
     },
   };
 }
@@ -106,7 +121,7 @@ type LimitRecord = {
 };
 
 class PgEngineTx implements EngineTx {
-  constructor(private readonly client: pg.PoolClient) {}
+  constructor(private readonly client: pg.ClientBase) {}
 
   newId(): string {
     return randomUUID();
