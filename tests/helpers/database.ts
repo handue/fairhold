@@ -12,6 +12,7 @@
  * points DATABASE_URL at it before the file is imported.
  */
 import { randomBytes } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import pg from "pg";
 
@@ -78,7 +79,25 @@ async function withAdminClient<T>(adminUrl: string, run: (client: pg.Client) => 
 }
 
 async function dropDatabase(client: pg.Client, name: string): Promise<void> {
+  await untilDisconnected(client, name);
   await client.query(`drop database if exists ${pg.escapeIdentifier(name)} with (force)`);
+}
+
+/**
+ * pg's Pool.end() resolves once it has asked every connection to close, not once they are gone.
+ * A forced drop in that gap terminates them, and a test's own pool without an error listener
+ * then fails the run with an unhandled 57P01 (seen in CI on a 50-connection pool). The drop still
+ * forces whatever is left after the timeout.
+ */
+async function untilDisconnected(client: pg.Client, name: string, timeoutMs = 5_000): Promise<void> {
+  for (const deadline = Date.now() + timeoutMs; Date.now() < deadline; ) {
+    const { rows } = await client.query<{ connected: number }>(
+      "select count(*)::int as connected from pg_stat_activity where datname = $1",
+      [name],
+    );
+    if ((rows[0]?.connected ?? 0) === 0) return;
+    await sleep(20);
+  }
 }
 
 async function listDatabases(client: pg.Client, prefix: string): Promise<string[]> {
