@@ -197,6 +197,12 @@ export function buildStateSnapshot(state: GlimState): StateSnapshot {
     }
   }
 
+  if (state.autopilotOff) {
+    lines.push(
+      "Glim's autopilot is off for this guest: after Start bidding, Fairhold's code only raises each plan lot up to its maximum, and Glim never moves money between lots on its own. Never say it can.",
+    );
+  }
+
   const favorites = [...state.favoriteLotNumbers].sort((a, b) => a - b).map(labelFor);
   lines.push(`Favorites: ${favorites.length > 0 ? favorites.join(", ") : "none"}.`);
   lines.push(

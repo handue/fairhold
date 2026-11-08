@@ -42,6 +42,7 @@ describe("getGuestReadSource", () => {
     vi.stubEnv("FREEZE_CLOCK_AT", "tonight");
     const source = await getGuestReadSource();
     expect(source).not.toBe(riversideFixtureSource);
-    expect(Object.keys(source)).toEqual(Object.keys(riversideFixtureSource));
+    expect(Object.keys(source)).toEqual(expect.arrayContaining(Object.keys(riversideFixtureSource)));
+    expect(source.streamPosition).toBeTypeOf("function");
   });
 });

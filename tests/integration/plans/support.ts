@@ -1,6 +1,6 @@
 /**
  * Galas priced like the demo for the autopilot's Postgres tests, built from time-relative
- * fixtures (never the story fixture, whose lots close on the real Nov 7 clock). Jamie is a real
+ * fixtures (never the story fixture, whose lots close at set evening times). Jamie is a real
  * guest; createPaddle inserts simulated paddles, so the guest's flag is flipped.
  */
 import type pg from "pg";

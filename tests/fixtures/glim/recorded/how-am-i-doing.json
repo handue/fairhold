@@ -1,0 +1,20 @@
+{
+  "name": "how-am-i-doing",
+  "description": "Recorded live from claude-opus-5-5 on 2026-11-08 through runGlimTurn: 07's quick reply, with the golden plan running. In any other state its figures fail the amount guard, which then answers from the live numbers.",
+  "guestText": "How am I doing?",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "You're winning both lots right now: Chef's Table at $320 with a maximum of $380, and Spa Day at $90 with a maximum of $120. Both close at 9:30 PM, and if you're outbid I'll raise each one only up to its maximum."
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ]
+}

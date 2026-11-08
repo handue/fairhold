@@ -12,11 +12,11 @@ No PayPal or Anthropic keys needed: payments are simulated and Glim replays reco
 npm install
 npm run db:start     # local Postgres 16 on port 54329, data in .pgdata/
 npm run db:migrate
-npm run db:seed      # the Riverside Shelter Gala fixture, at 8:58 PM on Nov 7, 2026
+npm run db:seed      # the Riverside Shelter Gala fixture, live, on the next evening it can still run
 npm run dev          # http://localhost:3000/e/riverside-shelter-gala
 ```
 
-The fixture keeps the gala's real times, so its countdowns read as approved only with the clock frozen at the instant the seed prints: `FREEZE_CLOCK_AT=2026-11-08T04:58:00Z npm run dev` (development only).
+The fixture keeps the gala's wall-clock times (it closes at 9:30 PM Pacific) on the first evening with more than an hour left before that close, so it stays live and takes bids. Its countdowns read as approved only with the clock frozen at the instant the seed prints: `FREEZE_CLOCK_AT=<that instant> npm run dev` (development only). `npm run db:seed -- --date=2026-11-07` seeds it on the evening the screens were drawn, for screens that print the date.
 
 To change a default or add sandbox keys, copy `.env.example` to `.env.local`.
 

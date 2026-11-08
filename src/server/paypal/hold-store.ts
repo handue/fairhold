@@ -11,14 +11,16 @@ import { getDb, type Database } from "@/server/db/client";
 import { positionalSql } from "@/server/db/positional-sql";
 import { COMMITMENTS_SQL, eventHasEnded, type EventStatus } from "@/server/engine";
 import { appendEventLog, type EventLogEntry } from "@/server/sse/notify";
+import type { HoldStreamPayload } from "@/server/sse/types";
 
 import type { PaypalError } from "./errors";
 import type { HoldKind, Payer } from "./payments";
 
 /**
  * `replaced` means the hold is not the paddle's bidding power but its authorization may still be
- * live at PayPal: a raise displaced it, or it was refused as bidding power when PayPal authorized
- * it (holdSwapRefusal). It becomes `voided` once PayPal confirms the void.
+ * live at PayPal: a raise displaced it, it was refused as bidding power when PayPal authorized it
+ * (holdSwapRefusal), or PayPal authorized it after it was canceled or failed here. It becomes `voided`
+ * once PayPal confirms the void.
  */
 export type HoldStatus =
   | "pending_approval"
@@ -102,6 +104,10 @@ export type MarkAuthorizedResult =
   | { kind: "authorized"; replaced: ReplacedHold | null }
   /** Stored as replaced (by the hold in place, if any) with its authorization, which still has to be voided. */
   | { kind: "refused"; refusal: HoldRefusal }
+  /**
+   * The hold had moved on; `status` is what it had moved to. If that was canceled, denied or failed,
+   * the hold is now stored as replaced with this authorization, which still has to be voided.
+   */
   | { kind: "not_pending"; status: HoldStatus | null };
 
 export type PaypalErrorRecord = ReturnType<PaypalError["toRecord"]>;
@@ -125,6 +131,9 @@ export interface HoldStore {
   /** Keeps the latest PayPal failure on the hold without changing its status. */
   recordPaypalError(holdId: string, error: PaypalErrorRecord): Promise<void>;
 }
+
+/** No authorization is on record for a hold in one of these, so a late one has to be stored to be voided. */
+const ENDED_WITHOUT_AUTHORIZATION: ReadonlySet<HoldStatus | null> = new Set<HoldStatus>(["canceled", "denied", "failed"]);
 
 /** Hold ids arrive in query strings; anything else is not a hold and never reaches SQL. */
 const HOLD_ID = /^[A-Za-z0-9-]{1,64}$/;
@@ -184,7 +193,20 @@ export function createPostgresHoldStore(database?: Database): HoldStore {
           select status from holds where id = ${holdId} for update
         `);
         const status = locked.rows[0]?.status ?? null;
-        if (status !== "pending_approval") return { kind: "not_pending", status };
+        if (status !== "pending_approval") {
+          // PayPal holds the money, though the hold ended here: the void has to be retryable, and
+          // the sweep's loop reads the authorization off a replaced hold.
+          if (ENDED_WITHOUT_AUTHORIZATION.has(status)) {
+            await tx.execute(sql`
+              update holds set status = 'replaced', replaced_by_hold_id = null, ${authorizationColumns(authorization)}
+              where id = ${holdId}
+            `);
+            await appendEventLog(tx, [
+              holdEvent(hold, { holdId, status: "replaced", amountCents: authorization.amountCents, replacedByHoldId: null }),
+            ]);
+          }
+          return { kind: "not_pending", status };
+        }
 
         const current = await lockAuthorizedHold(tx, hold.paddle_id);
         const refusal = holdSwapRefusal({
@@ -368,10 +390,7 @@ function authorizationColumns(authorization: HoldAuthorization): SQL {
 }
 
 /** A hold change on the paddle's own channel (holds are private to their guest). */
-function holdEvent(
-  hold: { event_id: string; paddle_id: string },
-  payload: EventLogEntry["payload"],
-): EventLogEntry {
+function holdEvent(hold: { event_id: string; paddle_id: string }, payload: HoldStreamPayload): EventLogEntry {
   return { eventId: hold.event_id, paddleId: hold.paddle_id, type: "hold", payload };
 }
 

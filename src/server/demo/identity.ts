@@ -32,12 +32,16 @@ export function resolveTimeZone(candidate: string | null | undefined, fallback: 
 
 const MAX_FIRST_NAME_LENGTH = 40;
 
-/** A guest's first name as typed on the join form: trimmed, inner whitespace collapsed. */
+/**
+ * A guest's first name as typed on the join form: trimmed, inner whitespace collapsed. Control and
+ * invisible format characters are refused: the name is shown to the room and to Glim.
+ */
 export function normalizeFirstName(input: string): string {
   const name = input.trim().replace(/\s+/g, " ");
   if (name.length === 0) throw new RangeError("A first name is required");
   if (name.length > MAX_FIRST_NAME_LENGTH) {
     throw new RangeError(`A first name has at most ${MAX_FIRST_NAME_LENGTH} characters`);
   }
+  if (/[\p{Cc}\p{Cf}]/u.test(name)) throw new RangeError("A first name cannot hold control characters");
   return name;
 }

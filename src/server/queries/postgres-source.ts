@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "@/server/db/client";
+import { holdsNul } from "@/server/db/text";
 
 import type {
   BidRecord,
@@ -33,7 +34,19 @@ export function createPostgresGuestSource(db: Database): GuestReadSource {
       return row.now;
     },
 
+    async streamPosition(slug) {
+      if (holdsNul(slug)) return "0";
+      const [row] = await select<{ position: string }>(sql`
+        select coalesce(max(log.id), 0)::text as "position"
+        from event_log log
+        join events e on e.id = log.event_id
+        where e.slug = ${slug}
+      `);
+      return row?.position ?? "0";
+    },
+
     async findEvent(slug) {
+      if (holdsNul(slug)) return null;
       const [event] = await select<EventRecord>(sql`
         select
           id::text as "id",
@@ -43,7 +56,7 @@ export function createPostgresGuestSource(db: Database): GuestReadSource {
           timezone as "timeZone",
           status::text as "status",
           ${epochMs(sql`opens_at`)} as "opensAt",
-          ${epochMs(sql`closes_at`)} as "closesAt"
+          ${epochMs(sql`coalesce(closed_at, closes_at)`)} as "closesAt"
         from events
         where slug = ${slug}
         limit 1
@@ -57,14 +70,16 @@ export function createPostgresGuestSource(db: Database): GuestReadSource {
           p.id::text as "id",
           p.number::integer as "number",
           p.first_name as "firstName",
-          (
-            select h.amount_cents::integer
-            from holds h
-            where h.paddle_id = p.id and h.status = 'authorized'
-            order by h.authorized_at desc nulls last
-            limit 1
-          ) as "holdCents"
+          hold.amount_cents::integer as "holdCents",
+          hold.id::text as "holdId"
         from paddles p
+        left join lateral (
+          select h.id, h.amount_cents
+          from holds h
+          where h.paddle_id = p.id and h.status = 'authorized'
+          order by h.authorized_at desc nulls last
+          limit 1
+        ) hold on true
         where p.event_id = ${eventId} and p.number = ${paddleNumber}
         limit 1
       `);

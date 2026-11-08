@@ -1,0 +1,32 @@
+{
+  "name": "change-drop-spa",
+  "description": "Recorded live from claude-opus-5-5 on 2026-11-08 through runGlimTurn: Edit's prefilled words with the golden plan running.",
+  "guestText": "Change my plan: drop the spa.",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "tool_use",
+          "name": "propose_change",
+          "input": {
+            "budget_dollars": null,
+            "items": [
+              {
+                "lot_number": 7,
+                "priority": 1,
+                "cap_dollars": 380
+              }
+            ],
+            "backup_lot_numbers": [],
+            "excluded_lot_numbers": []
+          }
+        }
+      ],
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ]
+}

@@ -4,6 +4,7 @@
  * opening bids live in story.ts, and README.md lists every figure that could not be matched.
  */
 import { dollars } from "./cents";
+import { STORY_TIME_ZONE } from "./storyClock";
 
 export const TEMPLATE_KEY = "riverside-shelter-gala";
 
@@ -36,7 +37,7 @@ export const RIVERSIDE_EVENT = {
   charityName: "Riverside Animal Shelter",
   charityEin: "12-3456789",
   charityIs501c3: true,
-  timeZone: "America/Los_Angeles",
+  timeZone: STORY_TIME_ZONE,
   currency: "USD",
   // 11 shows "PAYPAL *RIVERSIDEGALA" on the statement; PayPal allows at most 22 characters.
   softDescriptor: "RIVERSIDEGALA",

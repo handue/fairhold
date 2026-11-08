@@ -100,6 +100,11 @@ export interface GlimState {
   openedFromLotNumber: number | null;
   /** Glim's latest autopilot decisions (at most 3, oldest first); absent before autopilot existed. */
   recentDecisions?: GlimRecentDecision[];
+  /**
+   * True when plan cards do not arm the autopilot for this guest (src/server/chat/switch.ts): the
+   * snapshot then says so, so Glim never tells the guest it may move money on its own.
+   */
+  autopilotOff?: boolean;
 }
 
 /** What the model asked for, converted to cents. The allocator turns it into maxima. */

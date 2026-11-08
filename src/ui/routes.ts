@@ -3,8 +3,8 @@ import type { LotCategory } from "@/server/queries/types";
 import { formatLotNumber } from "./format";
 
 /**
- * Links between the guest pages. Until the session cookie lands, a viewer chosen with ?paddle=
- * is carried along so every link keeps showing the same paddle.
+ * Links between the guest pages. Outside production a viewer chosen with ?paddle= is carried along,
+ * so every link keeps showing the same paddle; a session needs nothing in the URL.
  */
 export interface GuestLinks {
   slug: string;
@@ -32,4 +32,9 @@ export function lotHref(links: GuestLinks, lotNumber: number): string {
 
 export function myPaddleHref(links: GuestLinks): string {
   return href(`${eventPath(links)}/paddle`, { paddle: links.paddle });
+}
+
+/** The first-name page of an event; after joining, the guest goes to `next`, a page of this event. */
+export function joinHref(slug: string, next: string | null = null): string {
+  return href(`${eventPath({ slug, paddle: null })}/join`, { next });
 }

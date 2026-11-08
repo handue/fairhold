@@ -26,7 +26,9 @@ describe("recorded Glim", () => {
       "autopilot-won-top-up",
       "budget-above-hold",
       "cabin-raise",
+      "change-drop-spa",
       "golden-plan",
+      "how-am-i-doing",
     ]);
     for (const recording of recordings) {
       for (const response of recording.responses) {

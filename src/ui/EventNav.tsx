@@ -6,6 +6,7 @@ import { cn } from "./cn";
 import { formatClockTime, formatPaddleNumber, formatWeekdayTime } from "./format";
 import { Money } from "./Money";
 import { PaddleMark } from "./PaddleMark";
+import { powerHref } from "./power/power-href";
 import { catalogHref, myPaddleHref, type GuestLinks } from "./routes";
 
 export type GuestSection = "lots" | "paddle" | "how-it-works";
@@ -54,7 +55,7 @@ export function EventNav({ event, viewer, links, active }: EventNavProps) {
 
       {viewer && (
         <div className="ml-auto flex items-center gap-12">
-          <BiddingPowerPill viewer={viewer} />
+          <BiddingPowerPill viewer={viewer} href={powerHref(links)} />
           <PaddlePill viewer={viewer} />
         </div>
       )}
@@ -93,10 +94,10 @@ export function EventStatusPill({ event, className }: { event: EventSummary; cla
   );
 }
 
-/** What is left of the hold, in lime on ink, over the whole hold. */
-export function BiddingPowerPill({ viewer }: { viewer: ViewerSummary }) {
+/** What is left of the hold, in lime on ink, over the whole hold. The way to 09 from every guest page. */
+export function BiddingPowerPill({ viewer, href }: { viewer: ViewerSummary; href: string }) {
   return (
-    <div className="flex h-40 items-center gap-10 rounded-full bg-ink px-14 font-mono text-13 text-white">
+    <Link href={href} className="flex h-40 items-center gap-10 rounded-full bg-ink px-14 font-mono text-13 text-white">
       <span className="text-10.5 tracking-label text-on-ink-muted uppercase">Bidding power</span>
       {viewer.holdCents === null ? (
         <b className="font-medium text-on-ink-muted">Not set</b>
@@ -105,7 +106,7 @@ export function BiddingPowerPill({ viewer }: { viewer: ViewerSummary }) {
           <span className="text-lime"><Money cents={viewer.availableCents} /></span> / <Money cents={viewer.holdCents} />
         </b>
       )}
-    </div>
+    </Link>
   );
 }
 

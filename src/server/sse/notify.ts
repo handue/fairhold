@@ -13,14 +13,15 @@ import type pg from "pg";
 
 import { positionalSql } from "@/server/db/positional-sql";
 
+import { EVENT_LOG_TYPES, type EventLogType } from "./types";
+
+export { EVENT_LOG_TYPES, type EventLogType };
+
 /** The one channel every process LISTENs on; payloads carry the routing keys. */
 export const EVENT_LOG_CHANNEL = "fairhold_event_log";
 
 /** Advisory-lock namespace (first key) for event_log ordering; engine/locks.ts uses others. */
 const EVENT_LOG_LOCK_CLASS = 0x4648_0002;
-
-export const EVENT_LOG_TYPES = ["bid", "lot_closed", "event_status", "hold", "glim", "settlement"] as const;
-export type EventLogType = (typeof EVENT_LOG_TYPES)[number];
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 

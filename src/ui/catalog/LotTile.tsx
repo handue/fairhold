@@ -9,9 +9,9 @@ import { isDrawingKey } from "../drawings/drawings";
 import { LotIllustration } from "../drawings/LotIllustration";
 import { Eyebrow } from "../Eyebrow";
 import { formatBidCount, formatClockTime, formatLotNumber } from "../format";
+import { GlimOpenButton } from "../GlimOpenButton";
 import { Money } from "../Money";
 import { Orb } from "../Orb";
-import { PendingButton } from "../PendingButton";
 import { StatusPill } from "../StatusPill";
 
 import { TileTimer } from "./TileTimer";
@@ -61,6 +61,13 @@ export function LotTile({ lot, href, timeZone }: LotTileProps) {
 
 function TileStatus({ lot, timeZone }: { lot: CatalogLot; timeZone: string }) {
   const position = "absolute top-12 left-12";
+  if (lot.viewerStatus === "won") {
+    return (
+      <StatusPill status="winning" edge className={position}>
+        Won at {formatClockTime(lot.closesAt, timeZone)}
+      </StatusPill>
+    );
+  }
   if (lot.status === "closed") {
     return (
       <StatusPill status="closed" className={position}>
@@ -97,14 +104,13 @@ function TileAction({ lot, href }: { lot: CatalogLot; href: string }) {
   }
   if (lot.offerGlimWatch) {
     return (
-      <PendingButton
-        action="letGlimWatch"
-        details={{ lot: lot.number }}
+      <GlimOpenButton
+        detail={{ lotNumber: lot.number }}
         className={cn(buttonClass({ variant: "outline", size: 30, padding: "pr-13 pl-4" }), "relative z-10")}
       >
         <Orb size={22} />
         Let Glim watch
-      </PendingButton>
+      </GlimOpenButton>
     );
   }
   return null;

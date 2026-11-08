@@ -32,3 +32,16 @@ export function amountGuardLine(holdCents: number | null, leftCents: number | nu
 export const NO_HOLD_LINE = "Set your bidding power first. Then I can plan your bids.";
 
 export const NOTHING_FITS_LINE = `I couldn’t fit that within your bidding power. ${FALLBACK_LINE}`;
+
+/** Waits for design/22: what Glim says when the guest pauses it. */
+export const PAUSED_LINE = "I won’t bid or change your plan until you resume. Your bids stand.";
+
+/** Waits for design/22: what Glim says on Resume, with the plan's lots ("Chef’s Table up to $380, Spa Day up to $120."). */
+export function resumedLine(planLine: string): string {
+  return planLine ? `I’m back on duty. ${planLine}` : "I’m back on duty.";
+}
+
+/** The plan's lots and maximums in one line, as 10's approved "Plan started" row reads. */
+export function planLine(items: readonly { shortTitle: string; maxCents: number }[]): string {
+  return items.length === 0 ? "" : `${items.map((item) => `${item.shortTitle} up to ${formatUsd(item.maxCents)}`).join(", ")}.`;
+}

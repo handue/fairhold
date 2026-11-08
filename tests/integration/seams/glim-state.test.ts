@@ -27,18 +27,6 @@ async function jamieAt(moment: "catalog" | "paddle") {
   return { fixture, state, power };
 }
 
-/**
- * The fixture keeps the gala's real date (Nov 7, 2026), so the engine, which reads the database
- * clock, refuses its lots once that night has passed. Moving every close to an hour from now keeps
- * a test that writes through the engine independent of the day it runs.
- */
-async function closeAnHourFromNow(eventId: string, at: Date) {
-  await database.pool.query(
-    "update lots set closes_at = closes_at + (clock_timestamp() + interval '1 hour' - $2::timestamptz) where event_id = $1",
-    [eventId, at],
-  );
-}
-
 describe("Glim's state from Postgres", () => {
   it("reads Jamie at 8:58 PM: $500 held, winning Chef's Table at $320, no plan yet", async () => {
     const { state, power } = await jamieAt("catalog");
@@ -92,7 +80,6 @@ describe("Glim's state from Postgres", () => {
 
   it("lets the engine confirm the plan change Glim validates: keep Chef's Table at its limit, skip the spa", async () => {
     const { fixture, state } = await jamieAt("paddle");
-    await closeAnHourFromNow(fixture.event.id, fixture.at);
     const lotId = (number: number) => state.lots.find((lot) => lot.number === number)?.id ?? "";
 
     const check = checkPlan(

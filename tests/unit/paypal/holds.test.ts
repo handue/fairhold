@@ -243,7 +243,28 @@ describe("completeHoldApproval", () => {
     expect(voidCall).toHaveBeenCalledTimes(1);
     const voided = voidCall.mock.calls[0]![0].authorizationId;
     await expect(payments.getAuthorization(voided)).resolves.toMatchObject({ status: "VOIDED" });
+    expect(store.get("hold-1")).toMatchObject({ status: "voided", originalAuthorizationId: voided });
   });
+
+  it.each(["canceled", "denied", "failed"] as const)(
+    "keeps the authorization of a hold %s while PayPal authorized it, when its void fails",
+    async (status) => {
+      const { store, payments, dependencies } = setup();
+      await pendingHold(store, payments, "hold-1");
+      store.beforeMarkAuthorized = () => {
+        store.get("hold-1").status = status;
+      };
+      vi.spyOn(payments, "void").mockRejectedValue(
+        new PaypalError({ operation: "void", code: "INTERNAL_SERVER_ERROR", httpStatus: 500, debugId: "dbg-500" }),
+      );
+
+      const outcome = await completeHoldApproval({ holdId: "hold-1", orderId: null }, dependencies);
+
+      expect(outcome.kind).toBe("not_pending");
+      // The status the sweep's void loop reads, with the id it needs.
+      expect(store.get("hold-1")).toMatchObject({ status: "replaced", originalAuthorizationId: expect.stringMatching(/^SIMA/) });
+    },
+  );
 
   it("refuses a return whose token is another order, and unknown holds", async () => {
     const { store, payments, dependencies } = setup();
@@ -268,6 +289,23 @@ describe("cancelHoldApproval", () => {
       kind: "canceled",
     });
     expect(store.get("hold-1").status).toBe("canceled");
+  });
+
+  it("changes nothing without the order id PayPal appends: a hold id alone is not enough", async () => {
+    const { store, payments, dependencies } = setup();
+    await pendingHold(store, payments, "hold-1");
+
+    await expect(cancelHoldApproval({ holdId: "hold-1", orderId: null }, dependencies)).resolves.toMatchObject({ kind: "order_mismatch" });
+    await expect(cancelHoldApproval({ holdId: "hold-1", orderId: "OTHERORDER" }, dependencies)).resolves.toMatchObject({ kind: "order_mismatch" });
+    expect(store.get("hold-1").status).toBe("pending_approval");
+  });
+
+  it("changes nothing on a hold whose order is not stored yet", async () => {
+    const { store, dependencies } = setup();
+    store.add({ id: "hold-1", paddleId: "paddle-142", amountCents: 500_00, paypalOrderId: null });
+
+    await expect(cancelHoldApproval({ holdId: "hold-1", orderId: "ANYORDER" }, dependencies)).resolves.toMatchObject({ kind: "order_mismatch" });
+    expect(store.get("hold-1").status).toBe("pending_approval");
   });
 
   it("never cancels a hold that is already authorized", async () => {

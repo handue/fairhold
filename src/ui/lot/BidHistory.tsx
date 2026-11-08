@@ -16,7 +16,7 @@ export function BidHistory({ entries, bidCount }: { entries: BidHistoryEntry[]; 
       <ol>
         {entries.map((entry) => (
           <li
-            key={`${entry.placedAt}-${entry.paddleNumber}`}
+            key={entry.amountCents}
             className="grid grid-cols-[1fr_auto_auto] items-center gap-18 border-b border-line py-9 text-13"
           >
             <span className="flex items-center gap-8">

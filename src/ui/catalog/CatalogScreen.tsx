@@ -1,8 +1,15 @@
-import type { CatalogLot, CatalogView } from "@/server/queries/types";
+"use client";
+
+import { useMemo } from "react";
+
+import type { CatalogSeed } from "@/server/queries/catalog";
+import { buildCatalogView } from "@/server/queries/catalog-view";
+import type { CatalogLot } from "@/server/queries/types";
 
 import { CornerOrb, GLIM_INVITATION } from "../CornerOrb";
 import { EventNav } from "../EventNav";
 import { GlimBand } from "../GlimBand";
+import { useLiveRecords, useLiveServerNow } from "../live/LiveStream";
 import { Money } from "../Money";
 import { lotHref, type GuestLinks } from "../routes";
 import { ServerClockProvider } from "../ServerClock";
@@ -14,15 +21,32 @@ import { LotTile } from "./LotTile";
 /** 4 columns by 2 rows: the first screen of lots ends before Glim's corner. */
 const FIRST_SCREEN_LOTS = 8;
 
-/** Screen 08: the guest's home for a live event. */
-export function CatalogScreen({ view, links }: { view: CatalogView; links: GuestLinks }) {
+/**
+ * The page's order, fixed when it was read: tiles change in place while it is open, so nothing moves
+ * under the cursor when a rival bids or a lot closes. The next load ranks them afresh.
+ */
+function pageOrder(seed: CatalogSeed): ReadonlyMap<number, number> {
+  return new Map(buildCatalogView(seed).lots.map((lot, index) => [lot.number, index]));
+}
+
+/** Screen 08: the guest's home for a live event. Rendered from the rows the server read, kept current from the stream. */
+export function CatalogScreen({ seed, links }: { seed: CatalogSeed; links: GuestLinks }) {
+  const records = useLiveRecords(seed);
+  const view = useMemo(() => buildCatalogView(records), [records]);
+  const order = useMemo(() => pageOrder(seed), [seed]);
+  const lots = useMemo(
+    () => [...view.lots].sort((a, b) => (order.get(a.number) ?? 0) - (order.get(b.number) ?? 0)),
+    [view.lots, order],
+  );
+  const serverNow = useLiveServerNow(seed.now);
+
   const tile = (lot: CatalogLot) => (
     <LotTile key={lot.number} lot={lot} href={lotHref(links, lot.number)} timeZone={view.event.timeZone} />
   );
-  const moreLots = view.lots.slice(FIRST_SCREEN_LOTS);
+  const moreLots = lots.slice(FIRST_SCREEN_LOTS);
 
   return (
-    <ServerClockProvider serverNow={view.serverNow}>
+    <ServerClockProvider serverNow={serverNow}>
       <EventNav event={view.event} viewer={view.viewer} links={links} active="lots" />
 
       <main className="mx-auto max-w-1344 px-48 pt-24 pb-48">
@@ -43,7 +67,7 @@ export function CatalogScreen({ view, links }: { view: CatalogView; links: Guest
 
         <CatalogGrid
           key={view.category ?? "all"}
-          firstTiles={view.lots.slice(0, FIRST_SCREEN_LOTS).map(tile)}
+          firstTiles={lots.slice(0, FIRST_SCREEN_LOTS).map(tile)}
           moreTiles={moreLots.map(tile)}
           moreCount={moreLots.length}
         />

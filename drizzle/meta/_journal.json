@@ -15,6 +15,13 @@
       "when": 1794085220060,
       "tag": "0001_glim_autopilot",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794168907415,
+      "tag": "0002_wave2",
+      "breakpoints": true
     }
   ]
 }

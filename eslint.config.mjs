@@ -26,7 +26,7 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
-    files: ["src/server/plans/**"],
+    files: ["src/server/plans/**", "src/server/chat/**"],
     rules: { "no-restricted-imports": ["error", { patterns: NO_PAYPAL }] },
   },
   {

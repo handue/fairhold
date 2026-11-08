@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { PaypalError } from "@/server/paypal/errors";
-import { paypalRequestId } from "@/server/paypal/idempotency";
 import { PaypalSandboxClient } from "@/server/paypal/sandbox-client";
 import type { WebhookEventStore } from "@/server/paypal/webhook-event-store";
 import {
@@ -9,6 +8,7 @@ import {
   MAX_WEBHOOK_BODY_BYTES,
   receivePaypalWebhook,
   verificationRequestBody,
+  verificationRequestId,
   type WebhookDependencies,
   type WebhookEvent,
   type WebhookSignatureVerifier,
@@ -177,9 +177,19 @@ describe("createWebhookSignatureVerifier", () => {
     expect(request.url).toBe("https://api-m.sandbox.paypal.com/v1/notifications/verify-webhook-signature");
     expect(request.headers.authorization).toBe("Bearer token-1");
     expect(request.headers["content-type"]).toBe("application/json");
-    expect(request.headers["paypal-request-id"]).toBe(paypalRequestId("verify-webhook", TRANSMISSION.transmissionId));
     expect(request.body).toBe(verificationRequestBody(RAW_EVENT, TRANSMISSION, "8PT597110X687430LKGECATA"));
+    expect(request.headers["paypal-request-id"]).toBe(verificationRequestId(request.body ?? ""));
     expect(bodyOf(request)).toMatchObject({ webhook_id: "8PT597110X687430LKGECATA" });
+  });
+
+  it("keeps one request id for a redelivery, and a new one when anything PayPal checks changes", () => {
+    const body = (raw: string, transmission = TRANSMISSION) => verificationRequestBody(raw, transmission, "8PT597110X687430LKGECATA");
+    const id = verificationRequestId(body(RAW_EVENT));
+
+    expect(verificationRequestId(body(RAW_EVENT))).toBe(id);
+    expect(id).toHaveLength(36);
+    expect(verificationRequestId(body('{"id":"WH-OTHER"}'))).not.toBe(id);
+    expect(verificationRequestId(body(RAW_EVENT, { ...TRANSMISSION, transmissionSig: "other" }))).not.toBe(id);
   });
 
   it("answers false when PayPal says FAILURE", async () => {

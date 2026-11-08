@@ -16,8 +16,11 @@ const VIEWPORT = { width: 1440, height: 900 };
 // Headless Chrome keeps 87px of the window for its own frame.
 const WINDOW_FRAME_HEIGHT = 87;
 
-/** The fixture's moment, 8:58 PM on November 7, 2026 in Los Angeles; it freezes the countdowns. */
-const FIXTURE_NOW = new Date("2026-11-08T04:58:00Z");
+/**
+ * Stops the browser's clock, so the countdowns stay at what the server rendered. Run the server with
+ * the FREEZE_CLOCK_AT that npm run db:seed prints; the browser only measures time since hydration.
+ */
+const FROZEN_BROWSER_CLOCK = new Date(process.env.FREEZE_CLOCK_AT ?? "2026-11-08T04:58:00Z");
 
 const SCREENS = [
   { file: "ui-08-lots.png", path: "/e/riverside-shelter-gala" },
@@ -42,7 +45,7 @@ for (const screen of SCREENS) {
     // would otherwise bring its own scale factor.
     const context = await browser.newContext({ viewport: null, deviceScaleFactor: undefined, baseURL });
     const page = await context.newPage();
-    await page.clock.setFixedTime(FIXTURE_NOW);
+    await page.clock.setFixedTime(FROZEN_BROWSER_CLOCK);
     await page.goto(screen.path, { waitUntil: "networkidle" });
     // The dev server's floating indicator is not part of the page.
     await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });

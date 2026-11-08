@@ -5,6 +5,7 @@
  * lines below follow the copy proposed in §11 V1–V3; none of it is approved yet, and no UI shows
  * it before the image approvals.
  */
+import { foldGuestText, hasBannedClaim } from "../bannedWords";
 import type { PlanCard } from "../cards";
 import { rankedMandateLots, type GlimMandate } from "../mandate";
 import { formatUsd, spelledOutAmountIndex } from "../money";
@@ -14,34 +15,10 @@ import { plainTitle } from "./prompt";
 import type { AutopilotChange, AutopilotContext, AutopilotDecider, AutopilotTrigger, DecisionReason } from "./types";
 
 const MAX_WHY = 140;
-/**
- * Words that promise an outcome or read as tax advice, by stem and phrase, so their other forms
- * fail too ("taxable", "guaranteeing", "write-off", "fair market value", "I'll win"). A false hit
- * only shows the template why.
- */
-const BANNED_WHY = new RegExp(
-  [
-    String.raw`\bguarante\w*`,
-    String.raw`\bpromise[sd]?\b`,
-    String.raw`\bdefinite(?:ly)?\b`,
-    String.raw`\bcertain(?:ly|ty)?\b`,
-    String.raw`\b(?:will|(?:i|we|you|they|it)['’ʼ]?ll|going to|gonna|sure to|bound to) win\b`,
-    String.raw`\bfmv\b`,
-    String.raw`\birs\b`,
-    String.raw`\btax\w*`,
-    String.raw`\bdeduct\w*`,
-    String.raw`\bwrite[-‐‑\s]?offs?\b`,
-    String.raw`\b(?:fair\s+)?market\s+value\b`,
-  ].join("|"),
-  "i",
-);
+/** Sureness a one-line why has no business showing; a chat reply may say "certainly". */
+const OVERSURE_WHY = /\bpromise[sd]?\b|\bdefinite(?:ly)?\b|\bcertain(?:ly|ty)?\b/i;
 const CURRENCY_WHY = /\$|\busd\b|dollar|\bbucks?\b|\bgrand\b/i;
 const MARKUP_WHY = /https?:\/\/|www\.|[<>`]/i;
-
-/** The why as a guest reads it: compatibility forms folded (NFKC) and invisible format characters dropped. */
-function foldWhy(text: string): string {
-  return text.normalize("NFKC").replace(/\p{Cf}/gu, "");
-}
 
 /**
  * The model's why, or null when the template must be shown instead: one line of at most 140
@@ -52,9 +29,9 @@ function foldWhy(text: string): string {
 export function filterWhy(why: string): string | null {
   const text = why.trim();
   if (!text || text.length > MAX_WHY || /[\r\n\u2028\u2029]/.test(text)) return null;
-  const folded = foldWhy(text);
+  const folded = foldGuestText(text);
   if (/\p{N}/u.test(folded) || spelledOutAmountIndex(folded) >= 0) return null;
-  if (CURRENCY_WHY.test(folded) || MARKUP_WHY.test(folded) || BANNED_WHY.test(folded) || folded.includes("!")) return null;
+  if (CURRENCY_WHY.test(folded) || MARKUP_WHY.test(folded) || OVERSURE_WHY.test(folded) || hasBannedClaim(folded) || folded.includes("!")) return null;
   return text;
 }
 

@@ -1,4 +1,4 @@
-Owner area: demo. Demo gala cloning, the seeded Riverside template, the director bots, demo controls and the 6-hour cleanup.
+Owner area: demo. Demo gala cloning and the seeded Riverside template. The director bots, demo controls and the 6-hour cleanup live in `src/server/director/`.
 
 ## Modules
 
@@ -9,15 +9,21 @@ Owner area: demo. Demo gala cloning, the seeded Riverside template, the director
   on any script that breaks them.
 - `schedule.ts`: lot close times on the story's evening and in a 25-minute demo.
 - `demoPlan.ts`, `fixturePlan.ts`: the rows of a demo gala or of the fixture, before any database work.
-- `persist.ts`: writes those rows with direct inserts. `createDemoEvent.ts` is the public entry point.
+- `persist.ts`: writes those rows with direct inserts. `createDemoEvent.ts` is the public entry point; a demo gala queues its director's background script in the same transaction, and the fixture has no director.
+- `start.ts`: `startDemoGala`, what the home page calls: `createDemoEvent` behind the two limits (5 per client per
+  hour, 25 taking bids at once), and a session for its creator with organizer rights over that event alone.
 
 ## Fixture moments
 
-`createFixtureEvent({ moment })` and `npm run db:seed -- --moment=<name>` recreate `riverside-shelter-gala`
-as one approved screen shows it. Times are the story's real instants (Saturday, November 7, 2026, PST), so
-the app's clock must be frozen at `FIXTURE_MOMENTS[moment]` to render the approved countdowns.
+`createFixtureEvent({ moment, on })` and `npm run db:seed -- --moment=<name> --date=YYYY-MM-DD` recreate
+`riverside-shelter-gala` as one approved screen shows it. The story stays written on Saturday, November 7,
+2026, and the plan then moves to the evening `on`, keeping its wall-clock times (`storyShiftMs`). By default
+that is the first evening whose 9:30 PM close is more than an hour away, so the event is live and the engine
+takes its bids whatever day it is seeded. The app's clock must be frozen at the returned `at` (the seed
+prints it) to render the approved countdowns. On a screen that prints the date (11, 12), only
+`--date=2026-11-07` reads as drawn.
 
-| moment | instant | screens |
+| moment | wall clock | screens |
 | --- | --- | --- |
 | `catalog` (default) | 8:58:00 PM | 08 Lots, 05 Lot 07 |
 | `paddle` | 9:15:40 PM | 10 My paddle, 14 Projector, 07's event card |

@@ -18,6 +18,10 @@
  * - Glim's autopilot (docs/planning/glim-autopilot.md): glim_plans.mandate (the rules the guest
  *   confirmed), glim_actions.detail, glim_autopilot (one wake-up cursor per paddle) and
  *   glim_autopilot_runs (one row per decision run).
+ * - glim_actions.source_event_log_id, so turning an engine fact into its action and event card is
+ *   idempotent; chat_messages and glim_actions stamp created_at with clock_timestamp(), so rows
+ *   written in one transaction keep their order in the chat and the feeds.
+ * - rate_limits (the API's fixed-window counters) and heartbeats (the sweep's last beat).
  */
 import { sql } from "drizzle-orm";
 import {
@@ -41,6 +45,8 @@ import {
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 const createdAt = () => timestamptz("created_at").notNull().defaultNow();
+/** For rows read back in insert order: now() is the transaction's start, the same for all its rows. */
+const insertedAt = () => timestamptz("created_at").notNull().default(sql`clock_timestamp()`);
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
@@ -494,12 +500,19 @@ export const glimActions = pgTable(
     triggerBidId: uuid("trigger_bid_id").references((): AnyPgColumn => bids.id, { onDelete: "set null" }),
     /** For autopilot actions: the run, its triggers, the plan before and after, and the why. */
     detail: jsonb("detail"),
-    createdAt: createdAt(),
+    /** The engine fact this action was written from; unique, so a replayed fact writes nothing. */
+    sourceEventLogId: bigint("source_event_log_id", { mode: "number" }).references((): AnyPgColumn => eventLog.id, {
+      onDelete: "set null",
+    }),
+    createdAt: insertedAt(),
   },
   (table) => [
     index("glim_actions_paddle_idx").on(table.paddleId, table.createdAt),
     index("glim_actions_plan_idx").on(table.planId),
     index("glim_actions_lot_idx").on(table.lotId),
+    uniqueIndex("glim_actions_source_event_log_uq")
+      .on(table.sourceEventLogId)
+      .where(sql`${table.sourceEventLogId} is not null`),
   ],
 );
 
@@ -527,7 +540,7 @@ export const chatMessages = pgTable(
     tokensUsed: integer("tokens_used").notNull().default(0),
     latencyMs: integer("latency_ms"),
     error: text("error"),
-    createdAt: createdAt(),
+    createdAt: insertedAt(),
   },
   (table) => [
     index("chat_messages_paddle_idx").on(table.paddleId, table.createdAt),
@@ -815,6 +828,31 @@ export const directorJobs = pgTable(
     check("director_jobs_attempts_nonnegative", sql`${table.attempts} >= 0`),
   ],
 );
+
+/**
+ * Fixed-window counters behind the API's rate limits (src/server/api/rate-limit.ts). In Postgres so
+ * a limit survives a deploy and holds across overlapping instances. Keys carry a keyed hash of the
+ * client's address, never the address itself. The sweep deletes old windows.
+ */
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").notNull(),
+    windowStart: timestamptz("window_start").notNull(),
+    count: integer("count").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.key, table.windowStart] }),
+    index("rate_limits_window_idx").on(table.windowStart),
+  ],
+);
+
+/** The latest beat of each background job, e.g. "sweep"; monitoring reads how old it is. */
+export const heartbeats = pgTable("heartbeats", {
+  name: text("name").primaryKey(),
+  beatAt: timestamptz("beat_at").notNull().defaultNow(),
+  detail: jsonb("detail"),
+});
 
 /** Errors worth keeping past Render's 7 days of logs. Rows outlive the demo they came from. */
 export const errorLog = pgTable(

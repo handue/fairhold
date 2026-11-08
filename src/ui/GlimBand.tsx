@@ -1,9 +1,9 @@
 import type { ViewerSummary } from "@/server/queries/types";
 
 import { buttonClass } from "./Button";
+import { GlimOpenButton } from "./GlimOpenButton";
 import { ArrowRightIcon, LockIcon } from "./icons";
 import { Orb } from "./Orb";
-import { PendingButton } from "./PendingButton";
 import { StatusPill } from "./StatusPill";
 
 /** 08's ink band: what the hold means, the viewer's bids, and the call to let Glim bid. */
@@ -35,8 +35,7 @@ export function GlimBand({ viewer }: { viewer: ViewerSummary }) {
 
       <div className="ml-auto flex items-center gap-12">
         <Orb size={32} />
-        <PendingButton
-          action="openGlimChat"
+        <GlimOpenButton
           className={buttonClass({
             variant: "lime",
             size: 48,
@@ -46,7 +45,7 @@ export function GlimBand({ viewer }: { viewer: ViewerSummary }) {
         >
           Let Glim bid for me
           <ArrowRightIcon size={18} />
-        </PendingButton>
+        </GlimOpenButton>
       </div>
     </section>
   );
