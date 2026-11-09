@@ -1,0 +1,10 @@
+# The default rules, plus one generated report. docs/paypal-lifecycle.md lists PayPal sandbox order
+# and authorization ids, which the generic rule reads as keys; the script writes no credentials to it.
+title = "Fairhold"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "PayPal sandbox lifecycle report"
+paths = ['''^docs/paypal-lifecycle\.md$''']

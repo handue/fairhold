@@ -239,6 +239,8 @@ After the review fixes I reran hold, glim-panel, control-room and live with no f
 
 ## Known gaps
 
+**PayPal's sandbox, from the lifecycle script (Nov 8, evening):** 29 of 29 checks pass in `docs/paypal-lifecycle.md`: a hold, a refused capture, a $320 final capture and its replay, a void, and a raise that voids the old hold. The app's own window has still not met a real approval. Holds D and E stay open for the reauthorize test, which PayPal allows from Wed Nov 11, 9:10 PM PST.
+
 - **Not run anywhere yet:**
   - The hosted URL, including the stream through Render's proxy and the first cron sweep.
   - A real sandbox window through the app (it needs a human approval), and capture and void confirmed by webhook.
