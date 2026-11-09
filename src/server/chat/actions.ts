@@ -17,12 +17,13 @@ import type { PlanIntent } from "@/server/glim/types";
 import { checkPlan } from "@/server/glim/validator";
 import { confirmPlan, skipLot, type ConfirmPlanResult } from "@/server/plans/apply";
 import { pausePlan, resumePlan } from "@/server/plans/pause";
+import { dismissRaiseOffer, loadOpenRaiseOffer } from "@/server/plans/raise-offer";
 import { planCardSchema, storeProposedPlan } from "@/server/plans/proposals";
 import { loadGlimState } from "@/server/queries/glim-state";
 import { appendEventLog } from "@/server/sse/notify";
 
 import { syncEventCards } from "./event-card-sync";
-import { eventEyebrow } from "./event-cards";
+import { eventEyebrow, planStartedCard } from "./event-cards";
 import { frozenNow } from "./frozen-clock";
 import { withTurnLock } from "./lock";
 import { planCardsArmAutopilot } from "./switch";
@@ -118,6 +119,14 @@ export async function startBidding(actor: PlanActor, planId: string, pool: pg.Po
   const confirmed = await confirmPlan({ paddleId: actor.paddleId, proposedPlanId: planId, pool });
   if (!confirmed.ok) throw confirmError(confirmed);
   await appendPaddleRow(pool, actor, { kind: "plan_status", planId, status: "active", version: 1 });
+  // design/22 #13 and #18, ahead of the opening bids' cards: "Plan started" or, after Update plan, "Plan edited".
+  const clock = await eventClock(pool, actor.eventId);
+  await postCard(
+    pool,
+    actor,
+    planStartedCard({ at: clock.now, timezone: clock.timezone, edited: confirmed.replaced, line: confirmed.message, actionId: confirmed.actionId }),
+    planId,
+  );
   await syncEventCards({ paddleId: actor.paddleId, pool });
 }
 
@@ -257,6 +266,21 @@ export async function editPlan(
     if (issue || !check.allocation) {
       throw new ApiError(422, issue?.reason ?? "plan_rejected", issue?.message ?? "That plan doesn’t fit.", { issues: check.issues });
     }
+    // Maximums that add up to the plan's budget leave its first lot as the one that takes the rest,
+    // as a change in words does (design/22 #9: "Never past $500 in all, and Spa Day up to $90."). The
+    // card is the same; only lots below the first keep the guest's figure as their own cap. Used
+    // only when the allocator then gives every lot exactly what was typed.
+    const typedTotal = items.reduce((sum, item) => sum + item.maxCents, 0);
+    if (keptBudget && intent.budgetCents !== null && typedTotal === intent.budgetCents && intent.items.length > 0) {
+      const open: PlanIntent = { ...intent, items: intent.items.map((item, index) => (index === 0 ? { ...item, capCents: null } : item)) };
+      const openCheck = checkPlan(open, state);
+      const same = openCheck.allocation?.items.every((allocated) => items.some((item) => item.lotNumber === allocated.lot.number && item.maxCents === allocated.maxCents));
+      if (openCheck.issues.length === 0 && openCheck.allocation && same) {
+        intent.items = open.items;
+        check = openCheck;
+      }
+    }
+    if (!check.allocation) throw new ApiError(422, "plan_rejected", "That plan doesn’t fit.");
     const namedBudgetCents = keptBudget ? (earlier?.namedBudgetCents ?? null) : null;
     const autopilot = planCardsArmAutopilot();
     const card = buildPlanCard({ tool: "propose_change", allocation: check.allocation, state, adjustments: [], intent, namedBudgetCents, autopilot });
@@ -264,4 +288,22 @@ export async function editPlan(
     const stored = await storeProposedPlan({ paddleId: actor.paddleId, guestText: null, reply: "", card, proposal, model: null, pool });
     return { planId: stored.planId, card };
   });
+}
+
+const offerEnded = () => new ApiError(409, "offer_ended", "This offer ended.");
+
+/**
+ * V3's "Approve $600 in PayPal": the amount of the raise Glim prepared, read from the stored action
+ * while the offer is still open, never from the request. The route hands it to createHold, which
+ * opens the PayPal window; nothing more is held until the guest approves there.
+ */
+export async function raiseOfferAmount(actor: PlanActor, actionId: string, pool: pg.Pool = getDatabaseClient().pool): Promise<number> {
+  const offer = await loadOpenRaiseOffer(pool, actor.paddleId);
+  if (!offer || offer.actionId !== actionId) throw offerEnded();
+  return offer.amountCents;
+}
+
+/** V3's "Not now": the offer ends for good, and the card reads "This offer ended". Repeating it is harmless. */
+export async function dismissRaise(actor: PlanActor, actionId: string, pool: pg.Pool = getDatabaseClient().pool): Promise<void> {
+  await dismissRaiseOffer(pool, actor.paddleId, actionId);
 }

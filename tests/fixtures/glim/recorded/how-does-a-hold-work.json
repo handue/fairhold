@@ -1,0 +1,17 @@
+{
+  "name": "how-does-a-hold-work",
+  "description": "Hand-written for design/22 #2's quick reply, so a keyless panel answers it. No figures, so it reads true in any state.",
+  "guestText": "How does a hold work?",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "Your bidding power is a hold with PayPal, not a charge. You approve it in a PayPal window. When bidding closes, you pay only for the lots you win, and the rest of the hold is released."
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": { "input_tokens": 0, "output_tokens": 0 }
+    }
+  ]
+}

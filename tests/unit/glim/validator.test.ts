@@ -202,6 +202,39 @@ describe("hold suggestions", () => {
     expect(clampHoldSuggestion({ amountCents: 40_000, lotNumbers: [] }, state).amountCents).toBe(100_000);
   });
 
+  it("offers the cabin's raise at 8:58, when $1,000 covers its $660 beside the $320 bid by hand (design/22 #5)", () => {
+    const state = createGoldenState();
+    expect(checkHoldSuggestion({ amountCents: 100_000, lotNumbers: [3] }, state)).toEqual([]);
+    expect(clampHoldSuggestion({ amountCents: 100_000, lotNumbers: [3] }, state).amountCents).toBe(100_000);
+  });
+
+  it("offers no raise with the $500 plan running, since even $1,000 can't cover $500 + $660 (design/22 #6, B1)", () => {
+    const state = createGoldenState();
+    state.commitments = [
+      { lotNumber: 7, source: "glim_limit", cents: 38_000, withoutGlimCents: 32_000 },
+      { lotNumber: 12, source: "glim_limit", cents: 12_000, withoutGlimCents: 0 },
+    ];
+    const issues = checkHoldSuggestion({ amountCents: 100_000, lotNumbers: [3] }, state);
+    expect(issues.map((issue) => issue.reason)).toEqual(["raise_cannot_cover"]);
+    expect(issues[0]).toMatchObject({ lotNumber: 3, amountCents: 116_000, limitCents: 100_000 });
+    expect(issues[0]?.message).toContain("Offer no raise");
+    const clamped = clampHoldSuggestion({ amountCents: 100_000, lotNumbers: [3] }, state);
+    expect(clamped.amountCents).toBeNull();
+  });
+
+  it("raises a suggestion too small to cover its lot to the preset that does", () => {
+    const state = createGoldenState();
+    // $640 + $20 beside the $320 already bid needs $980; $800 would leave the cabin out of reach.
+    expect(checkHoldSuggestion({ amountCents: 80_000, lotNumbers: [3] }, state).map((issue) => issue.reason)).toEqual(["hold_too_low"]);
+    expect(clampHoldSuggestion({ amountCents: 80_000, lotNumbers: [3] }, state).amountCents).toBe(100_000);
+  });
+
+  it("needs no raise for a lot the guest already leads", () => {
+    const state = createGoldenState();
+    state.commitments = [{ lotNumber: 7, source: "glim_limit", cents: 90_000, withoutGlimCents: 32_000 }];
+    expect(checkHoldSuggestion({ amountCents: 100_000, lotNumbers: [7] }, state)).toEqual([]);
+  });
+
   it("offers no raise once bidding power is at the event's maximum", () => {
     const state = createGoldenState();
     state.holdCents = 100_000;

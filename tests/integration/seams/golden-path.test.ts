@@ -8,8 +8,8 @@
  * The test holds the clock only for the director's jobs, which take it as an argument. Everything else
  * runs as the tick runs it: the tasks from src/instrumentation.ts, in that order.
  *
- * The autopilot's switch is off in the shipped code until V1 (design/21) is approved, so this file
- * turns it on for itself. The last test runs with it off, as the app ships today.
+ * The autopilot's switch is on as shipped, now that V1 (design/21) is approved, so the path below is
+ * the app as it ships. The last test turns it off, as GLIM_AUTOPILOT=off would.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,6 +36,7 @@ import { getBiddingPower, getCommitments, placeBid } from "@/server/engine";
 import { getSimulatedPayments } from "@/server/paypal/simulated-payments";
 import { createAutopilotTickTask } from "@/server/plans/task";
 import { getCatalogView } from "@/server/queries/catalog";
+import { readPaddleGlim } from "@/server/queries/paddle";
 import { settlementRunnerIdle, type LedgerView } from "@/server/settlement";
 import type { ReceiptGlimRecap, ReceiptLine } from "@/server/settlement";
 import { closeStreamHub } from "@/server/sse/hub";
@@ -49,10 +50,10 @@ import { makeDue } from "../plans/support";
 import { openStream, type StreamReader } from "../sse/support";
 
 const armed = vi.hoisted(() => ({ on: true }));
-vi.mock("@/server/chat/switch", () => ({
-  PLAN_CARDS_ARM_AUTOPILOT: true,
-  planCardsArmAutopilot: () => armed.on,
-}));
+vi.mock("@/server/chat/switch", async (importOriginal) => {
+  const shipped = await importOriginal<typeof import("@/server/chat/switch")>();
+  return { ...shipped, planCardsArmAutopilot: () => armed.on && shipped.planCardsArmAutopilot() };
+});
 
 const database = getTestDatabase();
 const { pool } = database;
@@ -323,7 +324,8 @@ describe("the golden path", () => {
       // Start bidding: Glim's limits and its opening $90 on Spa Day, with the mandate stored and armed.
       const started = await startBidding(jamie, card.planId);
       expect(planCardOf(started).state).toBe("running");
-      expect(eventLines(started)).toEqual(["I bid $90 for you. I’ll go up to $120."]);
+      // design/22 #13 and #14: Start bidding's own card, then the opening bid's.
+      expect(eventLines(started)).toEqual([expect.stringMatching(/ up to \$380, Spa Day up to \$120\.$/), "I bid $90 for you. I’ll go up to $120."]);
       expect(await lotNumbered(jamie.slug, LOT_SPA_DAY)).toMatchObject({ current_bid_cents: 9_000, high_paddle_id: jamie.paddleId, high_bid_source: "glim" });
       expect(await lotNumbered(jamie.slug, LOT_CHEFS_TABLE)).toMatchObject({ current_bid_cents: 32_000, high_paddle_id: jamie.paddleId });
       const [plan] = await rows<{ mandate: { budgetCents: number; lots: { lotNumber: number; role: string; capCents: number | null }[] } }>(
@@ -385,6 +387,12 @@ describe("the golden path", () => {
       expect(tile(LOT_WINE_TASTING)?.viewerStatus).toBe("winning");
       expect(tile(LOT_CHEFS_TABLE)?.viewerStatus).toBe("outbid");
       expect(catalog?.viewer).toMatchObject({ holdCents: 50_000, winningCount: 2, outbidCount: 1 });
+      // 10's feed shows the move with the bid it placed, not the new maximum (design/21 V4).
+      const { feed } = await readPaddleGlim(pool, jamie.paddleId);
+      expect(feed.find((entry) => entry.line.startsWith("I moved the $380 left to Wine Tasting."))).toMatchObject({
+        label: "WINE TASTING",
+        chip: { kind: "winning", amountCents: 22_000 },
+      });
 
       // A simulated guest outbids Kai, so he ends the night with nothing to pay.
       const outbidCents = ((await lotNumbered(jamie.slug, LOT_KAI_BIDS_ON)).current_bid_cents ?? 0) + 5_000;
@@ -398,7 +406,10 @@ describe("the golden path", () => {
       expect(late.status).toBe(409);
       expect(await errorOf(late)).toMatchObject({ code: "lot_closed" });
       await tickGlim(jamie);
-      expect(eventLines(await chatView(jamie))).toContain("Bidding closed. You won at $220.");
+      const closedView = await chatView(jamie);
+      expect(eventLines(closedView)).toContain("Bidding closed. You won at $220.");
+      // The plan card's "On my own" backup reads its outcome, like the plan's own lots.
+      expect(planCardOf(closedView).onMyOwn?.backups.map((backup) => [backup.title, backup.statusText])).toEqual([["Wine Tasting", "Won at $220"]]);
 
       // Wine Tasting and Spa Day are Jamie's; a closed event gives Glim nothing more to do.
       expect(await lotNumbered(jamie.slug, LOT_WINE_TASTING)).toMatchObject({ status: "closed", winning_paddle_id: jamie.paddleId, winning_cents: 22_000 });
@@ -415,6 +426,9 @@ describe("the golden path", () => {
       expect(before.phase).toBe("ready");
       expect(before.holds.real).toBe(2);
       expect(before.rows.find((row) => row.paddleNumber === 142)).toMatchObject({ toChargeCents: 31_000, toReleaseCents: 19_000 });
+      // 21's V6 row: Glim's one move ($120 on Spa Day, the $380 moved to Wine Tasting) is $500 in all,
+      // inside "Never past $500 in all", so it reads "Glim stayed inside every guest's rules".
+      expect(before.glim).toMatchObject({ decisions: 1, decisionsOutsideRules: 0 });
 
       // Charge the winners.
       const charged = await chargeRoute(postJson(`/api/events/${jamie.slug}/settlement`, {}, { cookie: jamie.cookie }), params({ slug: jamie.slug }));
@@ -543,7 +557,7 @@ describe("the golden path", () => {
     expect((await holdOf(holdId)).status).toBe("captured");
   }, 60_000);
 
-  it("stands still as the app ships today: with the switch off, Glim only raises to the card's limits", async () => {
+  it("stands still with the autopilot off (GLIM_AUTOPILOT=off): Glim only raises to the card's limits", async () => {
     armed.on = false;
     const { jamie, holdId, card } = await upToStartBidding();
     expect(card.autopilot).toBe(false);

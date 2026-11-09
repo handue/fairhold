@@ -86,9 +86,11 @@ describe("Pause and Resume", () => {
     const gala = await runningGala();
     const paused = await clickPause(gala);
     expect(paused.status).toBe(200);
-    expect(paused.view?.status).toEqual({ tone: "off", text: "Paused · $500 held with PayPal" });
+    // design/22 #10: the pause mark and its time in the status, and Resume in the header.
+    expect(paused.view?.status).toMatchObject({ tone: "off", mark: "paused", text: expect.stringMatching(/^Paused since \d+:\d\d [AP]M$/) });
+    expect(paused.view?.planControl).toBe("resume");
     expect(lastPlanCard(paused.view).state).toBe("paused");
-    expect(paused.view?.quickReplies[0]).toEqual({ kind: "resume", label: "Resume Glim" });
+    expect(paused.view?.quickReplies.map((reply) => reply.label)).toEqual(["Raise my budget", "Skip the spa", "How am I doing?"]);
     expect(await activeLimits(gala.jamie)).toEqual([
       { lot_id: gala.lots.spa, paused: true },
       { lot_id: gala.lots.chef, paused: true },
@@ -100,7 +102,8 @@ describe("Pause and Resume", () => {
 
     const resumed = await clickResume(gala);
     expect(resumed.status).toBe(200);
-    expect(resumed.view?.status).toEqual({ tone: "on", text: "On duty · $500 held with PayPal" });
+    expect(resumed.view?.status).toEqual({ tone: "on", mark: "on", text: "On duty · $500 held with PayPal" });
+    expect(resumed.view?.planControl).toBe("pause");
     expect(lastPlanCard(resumed.view).state).toBe("running");
     expect(await activeLimits(gala.jamie)).toEqual([
       { lot_id: gala.lots.spa, paused: false },

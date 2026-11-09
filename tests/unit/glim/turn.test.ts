@@ -2,7 +2,7 @@ import { InternalServerError } from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_RECORDINGS_DIR } from "@/server/glim/config";
-import { CAP_REACHED_LINE, FALLBACK_LINE, NO_HOLD_LINE } from "@/server/glim/copy";
+import { CAP_REACHED_LINE, ERROR_LINE, NO_HOLD_LINE } from "@/server/glim/copy";
 import { createRecordedGlimModel } from "@/server/glim/recorded";
 import type { GlimTranscript } from "@/server/glim/transcript";
 import { runGlimTurn, type GlimStreamEvent, type GlimTurnInput } from "@/server/glim/turn";
@@ -120,15 +120,15 @@ describe("runGlimTurn", () => {
   it("answers a refusal with the fallback line and keeps nothing", async () => {
     const { result, events } = turn({ model: scriptedModel(() => modelReply([], "refusal")).model });
     const outcome = await result;
-    expect(outcome).toMatchObject({ reply: FALLBACK_LINE, replySource: "fallback", error: "refusal", card: null });
+    expect(outcome).toMatchObject({ reply: ERROR_LINE, replySource: "fallback", error: "refusal", card: null });
     expect(outcome.transcriptAppend).toEqual([]);
-    expect(streamed(events)).toBe(FALLBACK_LINE);
+    expect(streamed(events)).toBe(ERROR_LINE);
   });
 
   it("answers an API error with the fallback line", async () => {
     const failing = scriptedModel(() => Promise.reject(new InternalServerError(500, undefined, "boom", new Headers())));
     const outcome = await turn({ model: failing.model }).result;
-    expect(outcome).toMatchObject({ reply: FALLBACK_LINE, replySource: "fallback", error: "api_error" });
+    expect(outcome).toMatchObject({ reply: ERROR_LINE, replySource: "fallback", error: "api_error" });
   });
 
   it("stops at the caps without calling the model", async () => {

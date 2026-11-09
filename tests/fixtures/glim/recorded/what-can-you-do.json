@@ -1,0 +1,17 @@
+{
+  "name": "what-can-you-do",
+  "description": "Hand-written for design/22 #1 and #2's quick reply, so a keyless panel answers it. No figures, so it reads true in any state.",
+  "guestText": "What can you do?",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "Tell me your budget and the lots you like, and I’ll suggest a plan. Once you press Start bidding, I bid for you within the rules on the card. You can pause me or change the plan anytime, and you approve any PayPal hold yourself."
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": { "input_tokens": 0, "output_tokens": 0 }
+    }
+  ]
+}

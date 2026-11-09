@@ -21,8 +21,9 @@ test.beforeEach(async ({ context }) => {
 
 async function startDemo(page: Page, firstName = "Sam"): Promise<string> {
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.getByLabel("First name").fill(firstName);
-  await page.getByRole("button", { name: "Start a demo gala" }).click();
+  // design/16 starts a demo with no name field; the API still takes one, so this spec's creator keeps its name.
+  const started = await page.request.post("/api/demo", { data: { firstName: firstName } });
+  await page.goto(((await started.json()) as { href: string }).href);
   await page.waitForURL(/\/e\/gala-[0-9a-z]{16}$/);
   return new URL(page.url()).pathname;
 }
@@ -116,7 +117,7 @@ test("does not trust a next from another site", async ({ page }) => {
   await page.waitForURL(catalog);
 });
 
-test("falls back to a full-page redirect when the browser blocks the window", async ({ page }) => {
+test("offers this tab when the browser blocks the window (design/17 frame 5)", async ({ page }) => {
   const catalog = await startDemo(page);
   await page.addInitScript(() => {
     window.open = () => null;
@@ -125,14 +126,18 @@ test("falls back to a full-page redirect when the browser blocks the window", as
 
   await hold.click();
 
+  await expect(hold).toHaveText("Continue to PayPal in this tab");
+  await expect(page.getByText("Your browser blocked the PayPal window. You’ll come back here to bid.")).toBeVisible();
+  await hold.click();
+
   // This tab goes to the return page, which says so and brings the guest back by itself.
   await page.waitForURL(/\/paypal\/return\?/);
-  await expect(page.getByRole("heading", { name: "Bidding power is set" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Approved" })).toBeVisible();
   await page.waitForURL(`${catalog}/lots/07`);
   await expect(nav(page)).toContainText("$500 / $500");
 });
 
-test("falls back to the redirect when a blocker kills the window after opening it", async ({ page }) => {
+test("offers this tab when a blocker kills the window after opening it", async ({ page }) => {
   const catalog = await startDemo(page);
   await page.addInitScript(() => {
     const open = window.open.bind(window);
@@ -150,6 +155,8 @@ test("falls back to the redirect when a blocker kills the window after opening i
   });
 
   await hold.click();
+  await expect(hold).toHaveText("Continue to PayPal in this tab");
+  await hold.click();
 
   await page.waitForURL(/\/paypal\/return\?/);
   await page.waitForURL(catalog);
@@ -166,6 +173,7 @@ test("waits while the window is open, and offers this tab in case it was hidden"
   await expect(hold).toHaveText("Finish in the PayPal window");
   await expect(hold).toBeDisabled();
   await expect(page.getByRole("radio", { name: "$250" })).toBeDisabled();
+  await expect(page.getByText("Can’t change while the PayPal window is open")).toBeVisible();
   await expect(page.getByText("Nothing is held until you approve.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Continue in this tab" })).toHaveAttribute("href", /\/paypal\/return\?/);
   await expect(nav(page)).toContainText("Not set");
@@ -217,11 +225,17 @@ test("says nothing was held after a cancel on PayPal, and tries again", async ({
 
   const popupOpened = page.waitForEvent("popup");
   await hold.click();
-  await untilClosed(await popupOpened);
+  // design/17 frame 4: the window stays to say so, until the guest closes it.
+  const popup = await popupOpened;
+  await popup.getByRole("button", { name: "Close window" }).click();
+  await untilClosed(popup);
 
-  await expect(page.getByText("Canceled in PayPal. Nothing was held.")).toBeVisible();
+  const notice = page.getByRole("main").getByRole("status");
+  await expect(notice).toContainText("Canceled in PayPal");
+  await expect(notice).toContainText("Nothing was held.");
   await expect(nav(page)).toContainText("Not set");
   await expect(page).toHaveURL(new RegExp(`${catalog}/power$`));
+  await expect(hold).toHaveText("Try again");
   await expect(hold).toBeEnabled();
 
   await stopCanceling();
@@ -238,6 +252,8 @@ test("after a cancel in the redirect flow, lands back on bidding power to try ag
   const hold = await openPower(page, catalog, `?next=${encodeURIComponent(`${catalog}/lots/07`)}`);
   await cancelOnPayPal(context);
 
+  await hold.click();
+  await expect(hold).toHaveText("Continue to PayPal in this tab");
   await hold.click();
 
   await page.waitForURL(/\/paypal\/cancel\?/);
@@ -263,9 +279,16 @@ test("says so when PayPal could not start the hold, and closes the blank window"
   await hold.click();
   await untilClosed(await popupOpened);
 
-  await expect(page.getByText("PayPal could not start this hold. Nothing was held. Please try again.")).toBeVisible();
-  await expect(hold).toHaveText("Hold $500 with PayPal");
+  const notice = page.getByRole("main").getByRole("status");
+  await expect(notice).toContainText("PayPal didn’t respond");
+  await expect(notice).toContainText("Nothing was held.");
+  await expect(hold).toHaveText("Try again");
   await expect(hold).toBeEnabled();
+
+  // Another amount starts over.
+  await page.getByRole("radio", { name: "$250" }).click();
+  await expect(notice).toHaveCount(0);
+  await expect(hold).toHaveText("Hold $250 with PayPal");
 });
 
 test("opens one window for a double click", async ({ page }) => {
@@ -304,7 +327,7 @@ test("checks an Other… amount, with the explainer following it", async ({ page
 
   // Digits only, so cents can't be typed.
   await amount.fill("750.50");
-  await expect(amount).toHaveValue("$75050");
+  await expect(amount).toHaveValue("$75,050");
   await amount.fill("750");
   await expect(amount).toHaveValue("$750");
   await expect(hold).toHaveText("Hold $750 with PayPal");
@@ -317,11 +340,20 @@ test("checks an Other… amount, with the explainer following it", async ({ page
   await expect(nav(page)).toContainText("$750 / $750");
 });
 
+/**
+ * An approved window closes itself after 3 seconds (design/17 frame 3). A hold pressed before then
+ * reuses that window by name, and its close can land on the new hold's start, which reads as blocked.
+ */
+async function approvedWindowsClosed(page: Page): Promise<void> {
+  await expect.poll(() => page.context().pages().filter((other) => other !== page && !other.isClosed()).length, { timeout: 10_000 }).toBe(0);
+}
+
 test("raises the hold from raise mode: a new total, offered only above the hold in place", async ({ page }) => {
   const catalog = await startDemo(page);
   await (await openPower(page, catalog)).click();
   await page.waitForURL(catalog);
   await expect(nav(page)).toContainText("$500 / $500");
+  await approvedWindowsClosed(page);
 
   const hold = await openPower(page, catalog, "?raise");
   await expect(page.getByRole("heading", { name: "Raise your bidding power" })).toBeVisible();
@@ -341,6 +373,7 @@ test("raises the hold from raise mode: a new total, offered only above the hold 
   await hold.click();
   await page.waitForURL(catalog);
   await expect(nav(page)).toContainText("$600 / $600");
+  await approvedWindowsClosed(page);
 
   // At the event's maximum there is nothing left to raise to.
   await (await openPower(page, catalog)).click();

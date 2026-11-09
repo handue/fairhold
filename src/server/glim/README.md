@@ -8,6 +8,8 @@ The caller supplies a `GlimState` (types.ts; `loadGlimState` in src/server/queri
 
 Autopilot (`autopilot/`, `mandate.ts`; spec `docs/planning/glim-autopilot.md`): after Start bidding, Glim decides again on its own inside the guest's mandate (the budget and caps they named, the plan lots and backups, the lots they ruled out). `autopilot/options.ts` works out what is possible, `autopilot/decide.ts` lets Claude choose with structured output and no tools (or `autopilot/rule.ts` decides), `autopilot/validate.ts` checks every rule, and `autopilot/copy.ts` writes the card. Everything here stays pure: `src/server/plans` reads the database, applies the change through the engine's `createLimits` and stores the records. ESLint keeps PayPal, the database and the engine's actions out of this folder.
 
-The chat (`src/server/chat`) passes `autopilot` to `runGlimTurn` (false while its switch is off or `GLIM_AUTOPILOT=off`), stores a proposal with `storeProposedPlan` (`src/server/plans/proposals.ts`) and confirms it with `confirmPlan`.
+A raise offer (`suggest_hold_amount`) is shown only when the event's maximum bidding power could cover each named lot's next bid beside what is already committed (`raiseNeeds`, `validator.ts`; design/22 #5 and #6): with a $500 plan running, "Can you also get me the cabin?" gets a plain "it won't fit".
+
+The chat (`src/server/chat`) passes `autopilot` to `runGlimTurn` (true as shipped since V1's approval, false with `GLIM_AUTOPILOT=off`), stores a proposal with `storeProposedPlan` (`src/server/plans/proposals.ts`) and confirms it with `confirmPlan`.
 
 `npm run glim:spike` runs the golden sentence, `npm run glim:spike -- --autopilot [scenario] [--record]` one autopilot decision; `npx vitest run tests/unit/glim` runs the tests.

@@ -1,18 +1,34 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from "react";
 
 import type { LedgerRow, LedgerView, SettlementChecks } from "@/server/settlement/types";
 import { apiGet, apiPost, ApiClientError } from "@/ui/api";
 import { cn } from "@/ui/cn";
-import { useStreamEvent } from "@/ui/live/LiveStream";
-import { Orb } from "@/ui/Orb";
+import { useLiveServerNow, useStreamEvent } from "@/ui/live/LiveStream";
 import { PaddleMark } from "@/ui/PaddleMark";
+import { ServerClockProvider } from "@/ui/ServerClock";
 
-import { canRetry, filterLabels, LEDGER_PAGE_SIZE, lotsTotalLabel, withoutBidsLine, type LedgerFilter } from "./ledger-model";
+import { checksRequestStatus, NO_CHECKS_REQUEST, reduceChecksRequest } from "./checks-request";
+import {
+  canRetry,
+  cornerBubble,
+  filterLabels,
+  flaggedPaddles,
+  LEDGER_PAGE_SIZE,
+  lotsTotalLabel,
+  railCopy,
+  railFoot,
+  railSection,
+  transactionLine,
+  withoutBidsLine,
+  type FootAction,
+  type LedgerFilter,
+} from "./ledger-model";
 import type { LedgerGridHandle, LedgerPager } from "./LedgerGrid";
 import { LedgerRail } from "./LedgerRail";
+import { OrganizerCorner } from "./OrganizerCorner";
 import { OrganizerNav } from "./OrganizerNav";
 
 /** The grid only exists in the browser, and this page's first paint should not wait for its code. */
@@ -24,8 +40,19 @@ const LedgerGrid = dynamic(() => import("./LedgerGrid"), {
 /** The stream brings changes at once; this catches what it missed and keeps the queue moving. */
 const POLL_MS = { charging: 2_000, other: 10_000 } as const;
 const STREAM_DEBOUNCE_MS = 200;
+/** PayPal is read four holds at a time; past this the rail stops saying "Checking…" and offers Check again. */
+const CHECKS_TIMEOUT_MS = 45_000;
 
 const FILTERS: readonly LedgerFilter[] = ["all", "winners", "nothing"];
+
+/**
+ * The ledger's body is 480px, ten rows, and everything else above the rail's bottom edge is 178px:
+ * the event line, the head and the gap under it (84) and the grid's header, totals and borders (94).
+ */
+const LEDGER_BODY_MIN = 480;
+const LEDGER_CHROME = 178;
+/** The rail's flexible gap never goes below this. */
+const RAIL_SPACER_MIN = 16;
 
 function totalsRow(view: LedgerView): LedgerRow {
   return {
@@ -47,17 +74,28 @@ function errorMessage(error: unknown): string {
   return error instanceof ApiClientError ? error.message : "Something went wrong. Please try again.";
 }
 
-/** Screen 12: the settlement ledger, the checks and the one action. */
-export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerView; organizerName: string }) {
+interface ControlRoomScreenProps {
+  initial: LedgerView;
+  organizerName: string;
+  /** The organizer's own receipt in a demo, where they are also a guest; null hides the link. */
+  receiptHref?: string | null;
+  /** The organizer's own paddle, whose transaction ID the rail shows first. */
+  ownPaddle?: number | null;
+}
+
+/** Screen 12: the settlement ledger, the checks and the one action, in every state of design/24. */
+export function ControlRoomScreen({ initial, organizerName, receiptHref = null, ownPaddle = null }: ControlRoomScreenProps) {
   const [view, setView] = useState(initial);
-  const [liveChecks, setLiveChecks] = useState<SettlementChecks | null>(null);
-  const [checking, setChecking] = useState(initial.phase === "ready" && initial.checks.passed === null);
+  const [request, dispatch] = useReducer(reduceChecksRequest, NO_CHECKS_REQUEST);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<LedgerFilter>("all");
   const [search, setSearch] = useState("");
   const [pager, setPager] = useState<LedgerPager | null>(null);
+  const [bodyMin, setBodyMin] = useState(LEDGER_BODY_MIN);
   const grid = useRef<LedgerGridHandle | null>(null);
+  const requests = useRef(0);
+  const serverNow = useLiveServerNow(initial.now);
 
   const path = `/api/events/${encodeURIComponent(view.event.slug)}/settlement`;
 
@@ -84,47 +122,27 @@ export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerV
     return () => clearInterval(timer);
   }, [phase, refresh]);
 
-  const askPaypal = useCallback(
-    () => apiPost<{ checks: SettlementChecks }>(`${path}/checks`).then(({ checks }) => checks),
-    [path],
-  );
-
-  const checkAgain = useCallback(async () => {
-    setChecking(true);
-    setError(null);
-    try {
-      setLiveChecks(await askPaypal());
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setChecking(false);
-    }
-  }, [askPaypal]);
+  /** Asks PayPal about every real hold. Every answer is dispatched, and only the latest one counts. */
+  const askPaypal = useCallback(() => {
+    requests.current += 1;
+    const id = requests.current;
+    dispatch({ type: "sent", id });
+    // A request that never answers would also leave "Checking…" up for good, so it gives up in time.
+    apiPost<{ checks: SettlementChecks }>(`${path}/checks`, {}, { signal: AbortSignal.timeout(CHECKS_TIMEOUT_MS) }).then(
+      ({ checks }) => dispatch({ type: "answered", id, checks }),
+      (failure: unknown) => dispatch({ type: "failed", id, error: errorMessage(failure) }),
+    );
+  }, [path]);
 
   // PayPal is asked once the page is on screen, not while it renders; simulated holds need no asking.
   const undecided = phase === "ready" && view.checks.passed === null;
   useEffect(() => {
-    if (!undecided) return;
-    let current = true;
-    askPaypal().then(
-      (checks) => {
-        if (!current) return;
-        setLiveChecks(checks);
-        setChecking(false);
-      },
-      (failure: unknown) => {
-        if (!current) return;
-        setError(errorMessage(failure));
-        setChecking(false);
-      },
-    );
-    return () => {
-      current = false;
-    };
+    if (undecided) askPaypal();
   }, [undecided, askPaypal]);
 
+  const requestStatus = checksRequestStatus(request);
   // After settlement starts, its stored checks are the record.
-  const checks = phase === "ready" ? (liveChecks ?? view.checks) : view.checks;
+  const checks = phase === "ready" ? (request.checks ?? view.checks) : view.checks;
 
   const charge = useCallback(async () => {
     setBusy(true);
@@ -135,7 +153,11 @@ export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerV
       setError(errorMessage(failure));
       if (failure instanceof ApiClientError && failure.code === "checks_failed") {
         const details = failure.details as { checks?: SettlementChecks } | null;
-        if (details?.checks) setLiveChecks(details.checks);
+        if (details?.checks) {
+          requests.current += 1;
+          dispatch({ type: "sent", id: requests.current });
+          dispatch({ type: "answered", id: requests.current, checks: details.checks });
+        }
       }
     } finally {
       setBusy(false);
@@ -162,6 +184,33 @@ export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerV
     setBusy(false);
   }, [retryItem, view.rows]);
 
+  /** Close bidding now: the demo control, kept on the rail as well as in 18's menu (C3). */
+  const closeBidding = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiPost(`/api/events/${encodeURIComponent(view.event.slug)}/demo/close-bidding`);
+      await refresh();
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setBusy(false);
+    }
+  }, [refresh, view.event.slug]);
+
+  const onAction = useCallback(
+    (action: FootAction) => {
+      if (busy) return;
+      if (action === "close") void closeBidding();
+      else if (action === "check") {
+        setError(null);
+        askPaypal();
+      } else if (action === "charge") void charge();
+      else if (action === "retry") void retryAll();
+    },
+    [askPaypal, busy, charge, closeBidding, retryAll],
+  );
+
   const onPager = useCallback((next: LedgerPager) => {
     setPager((current) =>
       current?.page === next.page && current.pages === next.pages && current.shown === next.shown && current.total === next.total
@@ -170,7 +219,27 @@ export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerV
     );
   }, []);
 
+  // A rail with more to say than 12's (21's V6 row, a failed check) keeps the ledger as tall as it
+  // is, so the rail never runs past the grid (C4). Measured without the rail's flexible gap, which
+  // only fills the height the grid gives it.
+  const railSpacer = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const spacer = railSpacer.current;
+    const rail = spacer?.parentElement;
+    if (!spacer || !rail) return;
+    const measure = () => {
+      const natural = rail.offsetHeight - spacer.offsetHeight + RAIL_SPACER_MIN;
+      setBodyMin(Math.max(LEDGER_BODY_MIN, Math.ceil(natural - LEDGER_CHROME)));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(rail);
+    observer.observe(spacer);
+    measure();
+    return () => observer.disconnect();
+  }, []);
+
   const totals = useMemo(() => totalsRow(view), [view]);
+  const flagged = useMemo(() => (phase === "ready" ? flaggedPaddles(checks) : new Map<number, string>()), [phase, checks]);
   const labels = filterLabels(phase);
   const counts: Record<LedgerFilter, number> = {
     all: view.counts.all,
@@ -180,9 +249,11 @@ export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerV
   const noBids = withoutBidsLine(view);
   const pages = Math.max(1, pager?.pages ?? 1);
   const page = pager?.page ?? 0;
+  const bubble = cornerBubble(view, checks);
+  const foot = railFoot(view, checks, { request: requestStatus, busy, receiptHref });
 
   return (
-    <>
+    <ServerClockProvider serverNow={serverNow}>
       <OrganizerNav event={view.event} organizerName={organizerName} />
 
       <main className="mx-auto max-w-1344 px-48 pt-32 tabular-nums">
@@ -244,7 +315,7 @@ export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerV
               </label>
             </div>
 
-            <div className="mt-16">
+            <div className="mt-16" style={{ "--ledger-body-min": `${bodyMin}px` } as CSSProperties}>
               <LedgerGrid
                 rows={view.rows}
                 totalsRow={totals}
@@ -252,6 +323,7 @@ export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerV
                 filter={filter}
                 search={search}
                 slug={view.event.slug}
+                flagged={flagged}
                 onRetry={retryItem}
                 onPager={onPager}
                 handleRef={grid}
@@ -260,14 +332,16 @@ export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerV
           </section>
 
           <LedgerRail
-            view={view}
-            checks={checks}
-            checking={checking}
-            busy={busy}
-            error={error}
-            onCharge={charge}
-            onRetryAll={retryAll}
-            onCheckAgain={checkAgain}
+            copy={railCopy({ ...view, checks })}
+            section={railSection(view, checks, requestStatus)}
+            foot={foot}
+            transaction={transactionLine(view, ownPaddle)}
+            receiptHref={receiptHref}
+            error={error ?? (phase === "ready" ? request.error : null)}
+            onAction={onAction}
+            spacerRef={(element) => {
+              railSpacer.current = element;
+            }}
           />
         </div>
 
@@ -292,12 +366,8 @@ export function ControlRoomScreen({ initial, organizerName }: { initial: LedgerV
         </div>
       </main>
 
-      {phase === "ready" && checks.passed !== false ? (
-        <OrganizerCorner title="Receipts are ready" body={"Every winner gets one when you charge."} />
-      ) : (
-        <OrganizerCorner />
-      )}
-    </>
+      <OrganizerCorner bubble={bubble} />
+    </ServerClockProvider>
   );
 }
 
@@ -324,20 +394,5 @@ function PagerButton({
         <path d={direction === "previous" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6"} />
       </svg>
     </button>
-  );
-}
-
-/** Glim in the corner, as on 08. Organizers have no chat, so the orb only shows its bubble. */
-function OrganizerCorner({ title, body }: { title?: string; body?: string }) {
-  return (
-    <div className="fixed right-32 bottom-28 z-40 flex items-end gap-12">
-      {title && (
-        <div className="max-w-230 rounded-18 rounded-br-4 border border-line bg-white px-14 py-12 shadow-bubble">
-          <p className="text-13.5 font-semibold">{title}</p>
-          <p className="mt-2 text-12.5 leading-[1.4] text-muted">{body}</p>
-        </div>
-      )}
-      <Orb size={68} />
-    </div>
   );
 }

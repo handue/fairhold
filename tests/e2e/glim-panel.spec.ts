@@ -74,7 +74,10 @@ test("opens at 07's size above the orb, the bubble stepping aside, and closes ag
   const box = await panel.boundingBox();
   expect(box).toMatchObject({ x: 1440 - 32 - 400, y: 900 - 112 - 704 });
   await expect(panel.getByText("Hi Jamie. What’s your budget tonight?")).toBeVisible();
-  await expect(panel.getByText("On duty · $500 held with PayPal")).toBeVisible();
+  // design/22 #1: not on duty until Start bidding, and the first open's three chips.
+  await expect(panel.getByText("Not bidding yet · $500 held with PayPal")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "All $500" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "What closes next?" })).toBeVisible();
   await expect(page.getByText("Want me to bid for you?")).toBeHidden();
 
   await panel.getByRole("button", { name: "Minimize" }).click();
@@ -103,11 +106,15 @@ test("the golden sentence shows the plan card, and Start bidding bids, all kept 
   await expect(panel.getByText("Spa Day for Two")).toBeVisible();
   await expect(panel.getByText("$380")).toBeVisible();
   await expect(panel.getByText("$120").first()).toBeVisible();
-  await expect(panel.getByText("On my own", { exact: false })).toHaveCount(0);
+  // V1 (design/21 #3): the rules Start bidding agrees to; no heart yet, so no backup.
+  await expect(panel.getByText("On my own")).toBeVisible();
+  await expect(panel.getByText("Never past $500 in all, and Spa Day up to $120.")).toBeVisible();
 
   await panel.getByRole("button", { name: "Start bidding" }).click();
   await expect(panel.getByRole("button", { name: "Start bidding" })).toHaveCount(0);
   await expect(panel.getByText(/^Started at /)).toBeVisible();
+  await expect(panel.getByText("On duty · $500 held with PayPal")).toBeVisible();
+  await expect(panel.getByText(/· PLAN STARTED$/)).toBeVisible();
   await expect(panel.getByText(/I bid \$\d+ for you\. I’ll go up to \$120\./)).toBeVisible();
   await expect(panel.getByText(/^Winning · \$\d+$/).first()).toBeVisible();
   await expect(panel.getByRole("button", { name: "Skip the spa" })).toBeVisible();
@@ -121,20 +128,20 @@ test("the golden sentence shows the plan card, and Start bidding bids, all kept 
   await expect(again.getByText(/^Started at /)).toBeVisible();
 });
 
-test("Skip, Pause and Resume answer in the chat", async ({ page }) => {
+test("Skip, Pause and Resume answer in the chat, Pause and Resume from the header", async ({ page }) => {
   const path = await startDemo(page);
   await holdFiveHundred(path);
   await page.goto(path);
   const panel = await openPanel(page);
   await say(page, GOLDEN_SENTENCE);
   await panel.getByRole("button", { name: "Start bidding" }).click();
-  await expect(panel.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Pause Glim" })).toBeVisible();
 
-  await panel.getByRole("button", { name: "Pause" }).click();
-  await expect(panel.getByText("Paused · $500 held with PayPal")).toBeVisible();
+  await panel.getByRole("button", { name: "Pause Glim" }).click();
+  await expect(panel.getByText(/^Paused since \d+:\d\d [AP]M$/)).toBeVisible();
   await expect(panel.getByText("I won’t bid or change your plan until you resume. Your bids stand.")).toBeVisible();
 
-  await panel.getByRole("button", { name: "Resume Glim" }).click();
+  await panel.getByRole("button", { name: "Resume", exact: true }).click();
   await expect(panel.getByText("On duty · $500 held with PayPal")).toBeVisible();
   await expect(panel.getByText(/^I’m back on duty\./)).toBeVisible();
 
@@ -185,21 +192,32 @@ test("a refusal offers a raise, opening 09 with the amount and the way back", as
   await say(page, "Can you also get me the cabin?");
   const offer = panel.getByRole("link", { name: "Raise bidding power" });
   await expect(offer).toBeVisible();
-  await expect(panel.getByText("Approve another hold in a PayPal window")).toBeVisible();
+  // design/22 #5: the lot and what is left, and 20's note.
+  await expect(panel.getByText("Cabin Stay · Current bid")).toBeVisible();
+  await expect(panel.getByText("You’ll approve another hold in a PayPal window.")).toBeVisible();
   expect(await offer.getAttribute("href")).toBe(`${path}/power?amount=1000&next=${encodeURIComponent(path)}`);
 });
 
-test("Edit and + leave words in the input for the guest to finish", async ({ page }) => {
+test("Edit opens the card's maximums as fields, and Done waits until the plan fits", async ({ page }) => {
   const path = await startDemo(page);
   await holdFiveHundred(path);
   await page.goto(path);
   const panel = await openPanel(page);
   await say(page, GOLDEN_SENTENCE);
+  // The + is gone with its lot picker (B2).
+  await expect(panel.getByRole("button", { name: "Add a lot to my plan" })).toHaveCount(0);
   await panel.getByRole("button", { name: "Edit", exact: true }).click();
-  await expect(panel.getByLabel("Message Glim")).toHaveValue("Change my plan: ");
-  await expect(panel.getByLabel("Message Glim")).toBeFocused();
-  await panel.getByRole("button", { name: "Add a lot to my plan" }).click();
-  await expect(panel.getByLabel("Message Glim")).toHaveValue("Add a lot to my plan: ");
+  const chef = panel.getByLabel("Chef’s Table Dinner maximum, in whole dollars");
+  await expect(chef).toHaveValue("380");
+  await chef.fill("420");
+  await expect(panel.getByText(/^This plan needs \$540$/)).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Done" })).toBeDisabled();
+  await chef.fill("360");
+  await panel.getByLabel("Spa Day for Two maximum, in whole dollars").fill("140");
+  await panel.getByRole("button", { name: "Done" }).click();
+  await expect(panel.getByText("Replaced at", { exact: false })).toBeVisible();
+  await expect(panel.getByText("Never past $500 in all, and Spa Day up to $140.")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Start bidding" })).toBeVisible();
 });
 
 test("a guest with no bidding power is sent to set it", async ({ page }) => {
@@ -207,7 +225,9 @@ test("a guest with no bidding power is sent to set it", async ({ page }) => {
   const panel = await openPanel(page);
   await expect(panel.getByText("Bidding power not set")).toBeVisible();
   await expect(panel.getByText("Hi Jamie. Set your bidding power first. Then I can plan your bids.")).toBeVisible();
-  await expect(panel.getByRole("link", { name: "Set your bidding power" })).toBeVisible();
+  // design/22 #2: 19's button and 20's note under the greeting.
+  await expect(panel.getByRole("link", { name: "Set bidding power" })).toBeVisible();
+  await expect(panel.getByText("It’s a hold with PayPal, not a charge.")).toBeVisible();
 });
 
 test("shows no panel on the projector or the organizer's pages", async ({ page }) => {

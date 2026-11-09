@@ -4,8 +4,17 @@
  * Fairhold put in the URL, and without that token nothing changes (cancelHoldApproval).
  */
 import { cancelHoldApproval, type CancelOutcome } from "@/server/paypal/holds";
-import { backHrefFor, paypalWindowResponse, retryHrefFor, type PaypalWindowPage } from "@/server/paypal/window-page";
+import {
+  backHrefFor,
+  paypalWindowResponse,
+  retryHrefFor,
+  windowEyebrow,
+  type PaypalWindowPage,
+} from "@/server/paypal/window-page";
 
+import { windowContextForHold } from "../window-context";
+
+/** design/17 frame 4, "Canceled"; the other answers take its layout with their own lines. */
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const holdId = url.searchParams.get("hold");
@@ -13,8 +22,11 @@ export async function GET(request: Request): Promise<Response> {
   if (!holdId) return paypalWindowResponse(unknownHold(next, 400));
 
   try {
-    const outcome = await cancelHoldApproval({ holdId, orderId: url.searchParams.get("token") });
-    return paypalWindowResponse(pageFor(outcome, next));
+    const [outcome, context] = await Promise.all([
+      cancelHoldApproval({ holdId, orderId: url.searchParams.get("token") }),
+      windowContextForHold(holdId),
+    ]);
+    return paypalWindowResponse({ ...pageFor(outcome, next), eyebrow: windowEyebrow(context) });
   } catch (error) {
     console.error(`[paypal/cancel] hold ${holdId}:`, error);
     return paypalWindowResponse({
@@ -49,7 +61,7 @@ function pageFor(outcome: CancelOutcome, next: string | null): PaypalWindowPage 
       status: 200,
       outcome: "approved",
       heading: "Bidding power is already set",
-      detail: "PayPal confirmed this hold before the cancel. You can close this window.",
+      detail: "PayPal confirmed this hold before the cancel.\nYou can close this window.",
     };
   }
   return {
@@ -58,8 +70,8 @@ function pageFor(outcome: CancelOutcome, next: string | null): PaypalWindowPage 
     backHref: retryHrefFor(next, hold.eventSlug),
     status: 200,
     outcome: "canceled",
-    heading: "Hold canceled",
-    detail: "Nothing was held. You can close this window and try again whenever you like.",
+    heading: "Canceled",
+    detail: "Nothing was held.\nYou can close this window.",
   };
 }
 

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import type { ChatCardView, ChatMessageView, ChatStreamFrame, ChatView, QuickReply } from "@/server/chat/types";
-import { FALLBACK_LINE } from "@/server/glim/copy";
+import { ERROR_LINE } from "@/server/glim/copy";
 
 import { ApiClientError, apiGet, apiPost } from "../api";
 import { cn } from "../cn";
@@ -13,17 +13,16 @@ import { onGlimOpen } from "../glim-events";
 import { Orb } from "../Orb";
 import { joinHref } from "../routes";
 
-import { UndrawnAutopilotCard } from "./AutopilotCards";
-import { EventCardView, GlimBubble, GuestBubble, HoldCard, PlanCard, type PlanCardActions } from "./cards";
+import { AutopilotCardView, AutopilotRaiseCardView } from "./AutopilotCards";
+import { ClosingCard, EventCardView, GlimBubble, GuestBubble, HoldCard, PlanCard, SetPowerCard, TypingBubble, type PlanCardActions } from "./cards";
 import { postChatMessage } from "./frames";
 import { GlimLiveUpdates } from "./GlimLiveUpdates";
+import { PauseMark, PlayMark, SpinnerMark } from "./marks";
 import { setGlimPanelOpen, setGuestTalked, useGlimPanelOpen } from "./panel-state";
 
 /** The chat is for guests: the projector and the organizer's pages show no panel (the scope map cuts it there). */
 const PAGES_WITHOUT_GLIM = /^\/e\/[^/]+\/(?:organizer|projector|join)(?:\/|$)/;
 const SOMETHING_WENT_WRONG = "Something went wrong. Please try again.";
-const EDIT_PREFILL = "Change my plan: ";
-const ADD_LOT_PREFILL = "Add a lot to my plan: ";
 
 interface Turn {
   guestText: string;
@@ -50,6 +49,9 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
   const [localLines, setLocalLines] = useState<LocalLine[]>([]);
   const [busy, setBusy] = useState(false);
   const [readFailed, setReadFailed] = useState(false);
+  /** The plan card open as fields (design/22 #7), and whether 10's "Edit plan" asked for the running one. */
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [editRunningPlan, setEditRunningPlan] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -65,7 +67,8 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
         setGlimPanelOpen(true);
         if (detail.lotNumber !== undefined) setContextLot(detail.lotNumber);
         if (detail.prefill !== undefined) setDraft(detail.prefill);
-        input.current?.focus();
+        if (detail.edit) setEditRunningPlan(true);
+        else input.current?.focus();
       }),
     [],
   );
@@ -126,6 +129,27 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
     [base, handleFailure, refresh],
   );
 
+  /** Done in the plan editor: the new card, or the sentence that says why not, for the editor to show. */
+  const editPlan = useCallback(
+    async (planId: string, items: { lotNumber: number; maxCents: number }[]): Promise<string | null> => {
+      setBusy(true);
+      try {
+        setView(await apiPost<ChatView>(`${base}/plans/${encodeURIComponent(planId)}/edit`, { items }));
+        return null;
+      } catch (error) {
+        if (error instanceof ApiClientError && error.code === "not_joined") {
+          handleFailure(error);
+          return null;
+        }
+        await refresh();
+        return error instanceof ApiClientError ? error.message : SOMETHING_WENT_WRONG;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [base, handleFailure, refresh],
+  );
+
   const applyFrame = useCallback((frame: ChatStreamFrame, guestText: string) => {
     switch (frame.type) {
       case "text":
@@ -161,18 +185,13 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
         const reachedServer = error instanceof ApiClientError && error.status !== 0;
         // When the answer was lost on the way, the turn may still finish: the next read shows it.
         if (reachedServer) handleFailure(error, guestText);
-        else setLocalLines((lines) => [...lines, { guestText, reply: FALLBACK_LINE }]);
+        else setLocalLines((lines) => [...lines, { guestText, reply: ERROR_LINE }]);
       } finally {
         setTurn(null);
       }
     },
     [applyFrame, base, contextLot, handleFailure, turn],
   );
-
-  function prefill(text: string) {
-    setDraft(text);
-    input.current?.focus();
-  }
 
   function minimize() {
     setGlimPanelOpen(false);
@@ -189,17 +208,34 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
     void send(draft);
   }
 
+  // 10's "Edit plan" opens the running plan's card as soon as the view has it.
+  if (editRunningPlan && view) {
+    const running = view.messages.findLast(
+      (message) => message.card?.type === "plan" && (message.card.state === "running" || message.card.state === "paused") && message.card.edit !== null,
+    );
+    setEditRunningPlan(false);
+    if (running?.card?.type === "plan") setEditingPlanId(running.card.planId);
+  }
+
   const cardActions: PlanCardActions = {
     onStart: (planId) => void act(`/plans/${planId}/confirm`),
-    onEdit: () => prefill(EDIT_PREFILL),
-    onPause: () => void act("/pause"),
-    onResume: () => void act("/resume"),
+    onEditDone: editPlan,
+  };
+  const cardProps: ChatCardProps = {
+    busy,
+    actions: cardActions,
+    // 09 comes back to this page once the hold is approved; other pages need no way back.
+    andBack: (href) => (/\/power(?:\?|$)/.test(href) ? `${href}${href.includes("?") ? "&" : "?"}next=${encodeURIComponent(pathname)}` : href),
+    slug,
+    pathname,
+    editingPlanId,
+    setEditingPlanId,
+    onSkip: (lotNumber) => void act(`/lots/${lotNumber}/skip`),
+    onDismissRaise: (actionId) => void act(`/raises/${encodeURIComponent(actionId)}/dismiss`),
   };
 
   if (!visible) return null;
 
-  /** 09 for a chip or a raise offer, coming back to this page once the hold is approved. */
-  const andBack = (href: string) => `${href}${href.includes("?") ? "&" : "?"}next=${encodeURIComponent(pathname)}`;
 
   return (
     <div
@@ -214,12 +250,31 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
         <Orb size={38} />
         <div className="min-w-0">
           <b className="block text-15 font-semibold">Glim</b>
-          <span className="mt-1 flex items-center gap-6 text-12 text-muted">
-            {view && <i className={cn("size-7 flex-none rounded-4", view.status.tone === "on" ? "bg-lime shadow-[0_0_0_1.5px_var(--color-lime-edge)]" : "bg-muted")} />}
-            <span className="truncate">{view?.status.text ?? " "}</span>
-          </span>
+          {view ? <StatusLine status={view.status} /> : <span className="mt-1 block text-12"> </span>}
         </div>
-        <div className="ml-auto flex flex-none gap-4">
+        <div className="ml-auto flex flex-none items-center gap-4">
+          {view?.planControl === "pause" && (
+            <button
+              type="button"
+              aria-label="Pause Glim"
+              disabled={busy}
+              onClick={() => void act("/pause")}
+              className="flex size-34 cursor-pointer items-center justify-center rounded-[10px] disabled:cursor-default disabled:opacity-60"
+            >
+              <PauseMark size={18} />
+            </button>
+          )}
+          {view?.planControl === "resume" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void act("/resume")}
+              className="inline-flex h-36 cursor-pointer items-center gap-6 rounded-18 bg-ink pr-14 pl-11 text-13.5 font-semibold whitespace-nowrap text-white disabled:cursor-default disabled:opacity-60"
+            >
+              <PlayMark />
+              Resume
+            </button>
+          )}
           <HeaderButton label="Minimize" onClick={minimize}>
             <path d="M6 12h12" />
           </HeaderButton>
@@ -238,9 +293,10 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
         className="flex min-h-0 flex-1 flex-col gap-10 overflow-y-auto p-16 [scrollbar-width:none]"
       >
         {view && <GlimBubble>{view.greeting}</GlimBubble>}
-        {!view && readFailed && <GlimBubble>{FALLBACK_LINE}</GlimBubble>}
+        {view?.greetingCard && <ChatCard card={view.greetingCard} {...cardProps} />}
+        {!view && readFailed && <GlimBubble>{ERROR_LINE}</GlimBubble>}
         {view?.messages.map((message) => (
-          <ChatMessage key={message.id} message={message} busy={busy} actions={cardActions} andBack={andBack} />
+          <ChatMessage key={message.id} message={message} {...cardProps} />
         ))}
         {localLines.map((line, index) => (
           <LocalMessage key={index} line={line} />
@@ -248,9 +304,10 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
         {turn && (
           <>
             <GuestBubble>{turn.guestText}</GuestBubble>
-            <GlimBubble>{turn.reply || "…"}</GlimBubble>
+            {turn.reply ? <GlimBubble>{turn.reply}</GlimBubble> : <TypingBubble />}
           </>
         )}
+        {view?.closing && <ClosingCard card={view.closing} onOpen={minimize} />}
       </div>
 
       {view && turn === null && view.quickReplies.length > 0 && (
@@ -260,7 +317,7 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
               key={reply.label}
               reply={reply}
               disabled={busy}
-              andBack={andBack}
+              andBack={cardProps.andBack}
               onAsk={(text) => void send(text)}
               onSkip={(lotNumber) => void act(`/lots/${lotNumber}/skip`)}
               onResume={() => void act("/resume")}
@@ -270,34 +327,35 @@ export function GlimPanel({ slug, talked }: { slug: string; talked: boolean }) {
         </div>
       )}
 
-      <form onSubmit={submit} className="mx-12 mb-12 flex h-52 flex-none items-center gap-10 rounded-26 border border-line bg-white pr-6 pl-14">
-        <button type="button" aria-label="Add a lot to my plan" onClick={() => prefill(ADD_LOT_PREFILL)} className="flex-none cursor-pointer text-ink2">
-          <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-        <input
-          ref={input}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          aria-label="Message Glim"
-          placeholder="Message Glim…"
-          autoComplete="off"
-          maxLength={1000}
-          className="min-w-0 flex-1 bg-transparent text-14 outline-none placeholder:text-[#8B8B90]"
-        />
-        <button
-          type="submit"
-          aria-label="Send"
-          disabled={turn !== null}
-          className="flex size-40 flex-none cursor-pointer items-center justify-center rounded-20 bg-ink text-lime disabled:cursor-default disabled:opacity-60"
-        >
-          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 19V5" />
-            <path d="M6 11l6-6 6 6" />
-          </svg>
-        </button>
-      </form>
+      {view?.inputClosed ? (
+        <div className="mx-12 mb-12 flex h-52 flex-none items-center rounded-26 border border-line px-18">
+          <span className="text-14 text-[#8B8B90]">{view.inputClosed}</span>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="mx-12 mb-12 flex h-52 flex-none items-center gap-10 rounded-26 border border-line bg-white pr-6 pl-18">
+          <input
+            ref={input}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            aria-label="Message Glim"
+            placeholder="Message Glim…"
+            autoComplete="off"
+            maxLength={1000}
+            className="min-w-0 flex-1 bg-transparent text-14 outline-none placeholder:text-[#8B8B90]"
+          />
+          <button
+            type="submit"
+            aria-label="Send"
+            disabled={turn !== null}
+            className="flex size-40 flex-none cursor-pointer items-center justify-center rounded-20 bg-ink text-lime disabled:cursor-default disabled:bg-closed disabled:text-muted"
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 19V5" />
+              <path d="M6 11l6-6 6 6" />
+            </svg>
+          </button>
+        </form>
+      )}
     </div>
   );
 }
@@ -312,31 +370,69 @@ function HeaderButton({ label, onClick, children }: { label: string; onClick(): 
   );
 }
 
+/** design/22 #23: a lime dot while Glim can bid, a grey one when it can't, the pause mark, or the spinner. */
+function StatusLine({ status }: { status: ChatView["status"] }) {
+  const quiet = status.mark === "paused" || status.mark === "deciding";
+  return (
+    <span className={cn("mt-1 flex items-center gap-6 text-12 whitespace-nowrap", quiet ? "text-ink2" : "text-muted")}>
+      {status.mark === "deciding" && <SpinnerMark />}
+      {status.mark === "paused" && <PauseMark size={10} />}
+      {(status.mark === "on" || status.mark === "off") && (
+        <i className={cn("size-7 flex-none rounded-4", status.mark === "on" ? "bg-lime shadow-[0_0_0_1.5px_var(--color-lime-edge)]" : "bg-muted")} />
+      )}
+      <span className="truncate">{status.text}</span>
+    </span>
+  );
+}
+
 interface ChatCardProps {
   busy: boolean;
   actions: PlanCardActions;
   andBack(href: string): string;
+  slug: string;
+  pathname: string;
+  editingPlanId: string | null;
+  setEditingPlanId(planId: string | null): void;
+  onSkip(lotNumber: number): void;
+  onDismissRaise(actionId: string): void;
 }
 
-function ChatCard({ card, busy, actions, andBack }: ChatCardProps & { card: ChatCardView }) {
+function ChatCard({ card, ...props }: ChatCardProps & { card: ChatCardView }) {
+  const leave = () => setGlimPanelOpen(false);
   switch (card.type) {
     case "plan":
-      return <PlanCard card={card} busy={busy} actions={actions} />;
+      return (
+        <PlanCard
+          card={card}
+          busy={props.busy}
+          actions={props.actions}
+          editing={props.editingPlanId === card.planId}
+          setEditing={(editing) => props.setEditingPlanId(editing ? card.planId : null)}
+        />
+      );
     case "event":
       return <EventCardView card={card} />;
     case "hold":
-      return <HoldCard card={card} href={andBack(card.href)} onOpen={() => setGlimPanelOpen(false)} />;
-    default:
-      return <UndrawnAutopilotCard card={card} />;
+      return <HoldCard card={card} href={props.andBack(card.href)} onOpen={leave} />;
+    case "set_power":
+      return <SetPowerCard card={card} href={props.andBack(card.href)} onOpen={leave} />;
+    case "closing":
+      return <ClosingCard card={card} onOpen={leave} />;
+    case "autopilot":
+      return <AutopilotCardView card={card} busy={props.busy} onSkip={props.onSkip} />;
+    case "autopilot_raise":
+      return (
+        <AutopilotRaiseCardView card={card} slug={props.slug} returnHref={props.pathname} busy={props.busy} onDismiss={props.onDismissRaise} />
+      );
   }
 }
 
-function ChatMessage({ message, ...card }: ChatCardProps & { message: ChatMessageView }) {
+function ChatMessage({ message, ...props }: ChatCardProps & { message: ChatMessageView }) {
   if (message.role === "guest") return <GuestBubble>{message.text}</GuestBubble>;
   return (
     <>
       {message.text && <GlimBubble>{message.text}</GlimBubble>}
-      {message.card && <ChatCard card={message.card} {...card} />}
+      {message.card && <ChatCard card={message.card} {...props} />}
     </>
   );
 }

@@ -1,11 +1,11 @@
 {
   "name": "cabin-raise",
-  "description": "Day 3's cabin request: it doesn't fit the bidding power, so Glim says so and suggests a raise; the guest approves any new hold with PayPal.",
+  "description": "Day 3's cabin request (design/22 #5 and #6). With $320 bid by hand and no plan, it doesn't fit the bidding power, so Glim says so and suggests a raise to $1,000; the guest approves any new hold with PayPal. With the $500 plan running, even $1,000 can't cover the $660 next bid, so code refuses the raise and the retry says so plainly.",
   "guestText": "Can you also get me the cabin?",
   "responses": [
     {
       "content": [
-        { "type": "text", "text": "The Cabin Stay's next bid is $660, more than your bidding power has room for. Want to raise it?" },
+        { "type": "text", "text": "The Cabin Stay’s next bid is $660, more than your bidding power has room for. Want to raise it?" },
         {
           "type": "tool_use",
           "name": "suggest_hold_amount",
@@ -13,6 +13,12 @@
         }
       ],
       "stop_reason": "tool_use"
+    },
+    {
+      "content": [
+        { "type": "text", "text": "The Cabin Stay’s next bid is $660, and your plan uses all $500. Even at this gala’s $1,000 maximum, it won’t fit." }
+      ],
+      "stop_reason": "end_turn"
     }
   ]
 }

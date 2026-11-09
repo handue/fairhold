@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { acquireTurnLock } from "@/server/chat/lock";
 import { runChatTurn } from "@/server/chat/turn";
 import { getBiddingPower } from "@/server/engine";
-import { CAP_REACHED_LINE, FALLBACK_LINE, TOO_LONG_LINE } from "@/server/glim/copy";
+import { CAP_REACHED_LINE, ERROR_LINE, FALLBACK_LINE, TOO_LONG_LINE } from "@/server/glim/copy";
 import { syntheticMessage } from "@/server/glim/recorded";
 import type { GlimModel, GlimModelRequest } from "@/server/glim/client";
 import { tokensToday } from "@/server/plans/usage";
@@ -54,12 +54,20 @@ describe("the golden sentence", () => {
       [7, 1, 38_000, "Winning at $320", 76],
       [12, 2, 12_000, "Current bid $85", 24],
     ]);
-    expect(card.autopilot).toBe(false);
+    // V1 is approved, so the shipped card carries the "ON MY OWN" block and arms the autopilot.
+    expect(card.autopilot).toBe(true);
+    expect(card.onMyOwn).toEqual({
+      eyebrow: "ON MY OWN",
+      body: "If a lot gets away, I’ll move its money to your other lots, and tell you why.",
+      backups: [],
+      rules: "Never past $500 in all, and Spa Day up to $120.",
+    });
     expect(answer.frames.at(-1)?.type).toBe("done");
     expect(answer.view?.messages.map((message) => message.role)).toEqual(["guest", "glim"]);
     expect(answer.view?.messages[0]?.text).toBe(GOLDEN_SENTENCE);
     expect(answer.view?.greeting).toBe("Hi Jamie. What’s your budget tonight?");
-    expect(answer.view?.status).toEqual({ tone: "on", text: "On duty · $500 held with PayPal" });
+    // design/22 #1: not on duty until Start bidding.
+    expect(answer.view?.status).toEqual({ tone: "off", mark: "off", text: "Not bidding yet · $500 held with PayPal" });
 
     // Stored as a proposal; nothing bid, nothing armed.
     expect(await rows(pool, "select status, budget_cents, mandate from glim_plans where paddle_id = $1", [gala.jamie])).toEqual([
@@ -84,7 +92,7 @@ describe("the golden sentence", () => {
     ]);
     expect(stored[0]?.message.content).toBe(GOLDEN_SENTENCE);
     expect(stored[1]?.message.content).toEqual(expect.stringContaining("STATE SNAPSHOT"));
-    expect(stored[1]?.message.content).toEqual(expect.stringContaining("Glim's autopilot is off for this guest"));
+    expect(stored[1]?.message.content).toEqual(expect.not.stringContaining("Glim's autopilot is off for this guest"));
     const toolUse = (stored[2]?.message.content as { type: string; id: string; name: string }[])[0];
     expect(toolUse).toMatchObject({ type: "tool_use", name: "propose_plan" });
     expect(stored[3]?.message.content).toEqual([expect.objectContaining({ type: "tool_result", tool_use_id: toolUse?.id })]);
@@ -152,7 +160,9 @@ describe("Start bidding", () => {
     const power = (await getBiddingPower([gala.jamie], pool)).get(gala.jamie);
     expect(power).toMatchObject({ holdCents: 50_000, committedCents: 50_000 });
 
-    expect(eventLines(clicked.view)).toEqual(["I bid $90 for you. I’ll go up to $120."]);
+    // design/22 #13, then #14: Start bidding's own card, then the opening bid's.
+    expect(eventLines(clicked.view)).toEqual(["Chef’s Table up to $380, Spa Day up to $120.", "I bid $90 for you. I’ll go up to $120."]);
+    expect(clicked.view?.messages.at(-2)?.card).toMatchObject({ type: "event", eyebrow: expect.stringMatching(/^\d+:\d\d [AP]M · PLAN STARTED$/) });
     const started = lastPlanCard(clicked.view);
     expect(started.state).toBe("running");
     expect(started.stateLine).toMatch(/^Started at \d+:\d\d [AP]M$/);
@@ -160,23 +170,31 @@ describe("Start bidding", () => {
     expect(clicked.view?.quickReplies.map((reply) => reply.label)).toEqual(["Raise my budget", "Skip the spa", "How am I doing?"]);
   });
 
-  it("does not arm the autopilot while the switch is off: no mandate, nothing to wake it", async () => {
+  it("does not arm the autopilot with it off (GLIM_AUTOPILOT=off): no mandate, nothing to wake it", async () => {
     const gala = await createChatGala(pool);
     await pool.query("insert into favorites (paddle_id, lot_id) values ($1, $2)", [gala.jamie, gala.lots.wine]);
-    const card = lastPlanCard((await sendMessage(gala, GOLDEN_SENTENCE)).view);
-    await clickStartBidding(gala, card.planId);
+    const turn = await runChatTurn({ paddleId: gala.jamie, eventId: gala.eventId, text: GOLDEN_SENTENCE, autopilot: false, database });
+    if (!turn.planId) throw new Error("no plan");
+    expect(lastPlanCard(await readView(gala)).onMyOwn).toBeNull();
+    await clickStartBidding(gala, turn.planId);
 
     expect(await rows(pool, "select status, mandate from glim_plans where paddle_id = $1", [gala.jamie])).toEqual([{ status: "active", mandate: null }]);
     expect(await count("select count(*)::int as n from glim_autopilot where paddle_id = $1", [gala.jamie])).toBe(0);
   });
 
-  it("stores the mandate and arms the autopilot once the switch is on", async () => {
+  it("stores the mandate and arms the autopilot through the routes, as shipped", async () => {
     const gala = await createChatGala(pool);
     await pool.query("insert into favorites (paddle_id, lot_id) values ($1, $2)", [gala.jamie, gala.lots.wine]);
-    const turn = await runChatTurn({ paddleId: gala.jamie, eventId: gala.eventId, text: GOLDEN_SENTENCE, autopilot: true, database });
-    if (!turn.planId) throw new Error("no plan");
-    expect(turn.result.card).toMatchObject({ autopilot: true });
-    await clickStartBidding(gala, turn.planId);
+    const card = lastPlanCard((await sendMessage(gala, GOLDEN_SENTENCE)).view);
+    expect(card.autopilot).toBe(true);
+    // V1 (design/21 #1): the hearted backup, and the rules Start bidding agrees to.
+    expect(card.onMyOwn).toEqual({
+      eyebrow: "ON MY OWN",
+      body: "If a lot gets away, I’ll move its money to your other lots or this backup, and tell you why.",
+      backups: [{ lotId: gala.lots.wine, title: "Wine Tasting", sourceLabel: "You hearted it", statusText: "Current bid $210" }],
+      rules: "Never past $500 in all, and Spa Day up to $120.",
+    });
+    await clickStartBidding(gala, card.planId);
 
     const [plan] = await rows<{ mandate: { budgetCents: number; lots: { lotId: string; role: string; capCents: number | null }[] } }>(
       pool,
@@ -223,17 +241,21 @@ describe("refusals", () => {
     const gala = await createChatGala(pool);
     const answer = await sendMessage(gala, "Can you also get me the cabin?");
     expect(answer.error).toBeNull();
-    expect(answer.streamed).toBe("The Cabin Stay's next bid is $660, more than your bidding power has room for. Want to raise it?");
+    expect(answer.streamed).toBe("The Cabin Stay’s next bid is $660, more than your bidding power has room for. Want to raise it?");
     const message = answer.view?.messages.at(-1);
     expect(message?.text).toBe(answer.streamed);
+    // design/22 #5: the lot and its bid, what is left, 07's lime button and its note.
     expect(message?.card).toEqual({
       type: "hold",
       amountCents: 100_000,
       currentHoldCents: 50_000,
+      lot: { label: "Cabin Stay · Current bid", amountCents: 64_000 },
+      left: { leftCents: 18_000, holdCents: 50_000 },
       label: "Raise bidding power",
-      note: "Approve another hold in a PayPal window",
+      note: "You’ll approve another hold in a PayPal window.",
       href: `/e/${gala.slug}/power?amount=1000`,
     });
+    expect(answer.view?.quickReplies.map((reply) => reply.label)).toEqual(["What else fits?", "How am I doing?"]);
     expect(await count("select count(*)::int as n from glim_plans where paddle_id = $1", [gala.jamie])).toBe(0);
   });
 
@@ -315,13 +337,18 @@ describe("the error fallback", () => {
     },
   });
 
-  it("answers You can still bid yourself, stores the exchange and keeps the transcript clean", async () => {
+  it("answers design/22 #4's line, stores the exchange and keeps the transcript clean", async () => {
     const gala = await createChatGala(pool);
     scripted = failing();
     const answer = await sendMessage(gala, GOLDEN_SENTENCE);
     expect(answer.error).toBeNull();
-    expect(answer.streamed).toBe(FALLBACK_LINE);
-    expect(answer.view?.messages.map((message) => message.text)).toEqual([GOLDEN_SENTENCE, FALLBACK_LINE]);
+    expect(answer.streamed).toBe(ERROR_LINE);
+    expect(answer.view?.messages.map((message) => message.text)).toEqual([GOLDEN_SENTENCE, ERROR_LINE]);
+    // Try again sends the same words; See the lots goes back to 08.
+    expect(answer.view?.quickReplies).toEqual([
+      { kind: "ask", label: "Try again", text: GOLDEN_SENTENCE },
+      { kind: "link", label: "See the lots", href: `/e/${gala.slug}` },
+    ]);
     expect(await rows(pool, "select error from chat_messages where paddle_id = $1 and role = 'glim'", [gala.jamie])).toEqual([{ error: "network_error" }]);
     expect(await count("select count(*)::int as n from glim_transcript where paddle_id = $1", [gala.jamie])).toBe(0);
   });
@@ -330,7 +357,7 @@ describe("the error fallback", () => {
     const gala = await createChatGala(pool);
     scripted = scriptedModel(() => syntheticMessage([], "refusal", { usage: { input_tokens: 100, output_tokens: 5 } })).model;
     const answer = await sendMessage(gala, GOLDEN_SENTENCE);
-    expect(answer.streamed).toBe(FALLBACK_LINE);
+    expect(answer.streamed).toBe(ERROR_LINE);
     expect(await rows(pool, "select error, tokens_used from chat_messages where paddle_id = $1 and role = 'glim'", [gala.jamie])).toEqual([
       { error: "refusal", tokens_used: 105 },
     ]);

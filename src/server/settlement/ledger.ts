@@ -6,6 +6,8 @@ import { getPool } from "@/server/db/client";
 import { holdsNul } from "@/server/db/text";
 import type { Queryable } from "@/server/db/transaction";
 import { eventHasEnded } from "@/server/engine/rules";
+import { parseMandate } from "@/server/glim/mandate";
+import { getDevelopmentSwitches } from "@/server/lib/env";
 import type { EventStatus } from "@/server/queries/types";
 
 import { checkGlimWithinLimits, checkWinnersWithinHolds, summarizeChecks } from "./checks";
@@ -13,6 +15,7 @@ import { bidderName, lotsWonLabel } from "./names";
 import type {
   CheckKey,
   HoldKindLabel,
+  LedgerGlim,
   LedgerItem,
   LedgerPhase,
   LedgerRow,
@@ -72,6 +75,7 @@ interface SettlementRow {
   finished_at: Date | null;
   winners: number;
   checks: SettlementChecks | null;
+  receipts: number;
 }
 
 /** The ledger of the event `slug`, or null when there is no such event. */
@@ -88,10 +92,12 @@ export async function getLedgerView(slug: string, db: Queryable = getPool()): Pr
   // First: a settlement only reads done after its last row, so rows read later can never lag a "done"
   // and leave 12 reading "charged" over rows still "Queued", with nothing left polling to correct it.
   const settlements = await db.query<SettlementRow>(
-    "select id, status, started_at, finished_at, winners, checks from settlements where event_id = $1",
+    `select s.id, s.status, s.started_at, s.finished_at, s.winners, s.checks,
+       (select count(*)::int from receipts r where r.event_id = s.event_id) as receipts
+     from settlements s where s.event_id = $1`,
     [event.id],
   );
-  const [paddles, lots, glimBids] = await Promise.all([
+  const [paddles, lots, glimBids, glimDecisions, glimWithin, now] = await Promise.all([
     db.query<PaddleRow>(
       `select p.id, p.number, p.first_name, p.last_initial, h.kind as hold_kind, h.amount_cents as hold_cents,
          i.id as item_id, i.action, i.status as item_status, i.amount_cents as item_amount_cents,
@@ -116,6 +122,11 @@ export async function getLedgerView(slug: string, db: Queryable = getPool()): Pr
        group by b.paddle_id`,
       [event.id],
     ),
+    readGlimDecisions(db, event.id),
+    // While bidding runs the checks wait for the close, but the corner's "all within their limits"
+    // is only said once the bids themselves are read back.
+    eventHasEnded(event.status) ? null : checkGlimWithinLimits(db, event.id),
+    readNow(db),
   ]);
 
   const biddingOver = eventHasEnded(event.status);
@@ -169,6 +180,16 @@ export async function getLedgerView(slug: string, db: Queryable = getPool()): Pr
   const settlement = settlementRow ? summarizeSettlement(settlementRow, rows) : null;
   const glimBidders = rows.filter((row) => row.glim);
   const real = rows.filter((row) => row.holdKind === "paypal").length;
+  const checks = settlementRow?.checks ?? (await viewChecks(db, event.id, biddingOver, real));
+  const glimCheck = glimWithin ?? checks.checks.find((check) => check.key === "glim_within_limits");
+  const glim: LedgerGlim = {
+    bidders: glimBidders.length,
+    winners: glimBidders.filter((row) => row.toChargeCents > 0).length,
+    bids: [...glimByPaddle.values()].reduce((sum, bids) => sum + bids, 0),
+    bidsOutsideLimits: glimCheck?.problems.length ?? 0,
+    decisions: glimDecisions.decisions,
+    decisionsOutsideRules: glimDecisions.outside,
+  };
 
   return {
     event: {
@@ -200,18 +221,131 @@ export async function getLedgerView(slug: string, db: Queryable = getPool()): Pr
         .map((lot) => ({ number: lot.number, title: lot.title })),
     },
     holds: { real, simulated: rows.filter((row) => row.holdKind === "simulated").length },
-    glim: {
-      bidders: glimBidders.length,
-      winners: glimBidders.filter((row) => row.toChargeCents > 0).length,
-      bids: [...glimByPaddle.values()].reduce((sum, bids) => sum + bids, 0),
-    },
-    checks: settlementRow?.checks ?? (await viewChecks(db, event.id, biddingOver, real)),
+    glim,
+    checks,
     settlement,
+    now,
   };
+}
+
+/** The clock the pages read: FREEZE_CLOCK_AT outside production, else the database's. */
+async function readNow(db: Queryable): Promise<number> {
+  const frozen = getDevelopmentSwitches().freezeClockAt;
+  if (frozen !== null) return frozen;
+  const { rows } = await db.query<{ now: Date }>("select clock_timestamp() as now");
+  return rows[0]?.now.getTime() ?? Date.now();
+}
+
+interface DecisionRow {
+  id: string;
+  kind: "autopilot_changed" | "autopilot_raise_prepared";
+  amount_cents: number | null;
+  detail: unknown;
+  mandate: unknown;
+  bids: { lotId: string; amountCents: number; maxCents: number | null }[];
+  /** When Glim decided; read with `skips`, it says whether a Skip came before the decision. */
+  created_at?: Date | string | null;
+  /** The guest's Skips on the decision's plan: the lot and when. */
+  skips?: { lotId: string; at: string }[] | null;
+}
+
+interface DecisionLot {
+  lotId: string;
+  maxCents: number;
+}
+
+/** A plan a decision's action recorded: "after" (the plan it asked for) or "before" (the limits it replaced). */
+function decisionLots(detail: unknown, key: "after" | "before" = "after"): DecisionLot[] {
+  const lots = (detail as Record<string, unknown> | null)?.[key];
+  if (!Array.isArray(lots)) return [];
+  return lots.flatMap((lot): DecisionLot[] => {
+    const { lotId, maxCents } = (lot ?? {}) as { lotId?: unknown; maxCents?: unknown };
+    return typeof lotId === "string" && typeof maxCents === "number" ? [{ lotId, maxCents }] : [];
+  });
+}
+
+/**
+ * R9's exception, as buildChange decides it: a decision that only lowers or drops maximums Glim
+ * already held may leave the plan over the budget, since it adds nothing.
+ */
+function lowerOrDropOnly(detail: unknown, after: readonly DecisionLot[]): boolean {
+  const stored = (detail as { lowerOrDropOnly?: unknown } | null)?.lowerOrDropOnly;
+  if (typeof stored === "boolean") return stored;
+  const before = new Map(decisionLots(detail, "before").map((lot) => [lot.lotId, lot.maxCents]));
+  return after.every((lot) => {
+    const previous = before.get(lot.lotId);
+    return previous !== undefined && lot.maxCents <= previous;
+  });
+}
+
+/**
+ * 21's V6 row: every decision Glim made on its own, read back against the rules on its plan. A
+ * decision is outside them when a lot it planned or bid on is not one the guest let Glim use (or one
+ * the guest had already skipped), a maximum or a bid is above the guest's cap for that lot or above
+ * its limit, the maximums it planned add up to more than the budget the guest named ("Never past
+ * $500 in all") unless it only lowered or dropped them, or a raise asks for more than that budget. A
+ * lot ruled out by Skip after the decision does not count against it, since the decision could not
+ * have known.
+ */
+export function decisionOutsideRules(decision: Omit<DecisionRow, "id">): boolean {
+  const mandate = parseMandate(decision.mandate);
+  if (!mandate) return true;
+  const decidedAt = decision.created_at ? new Date(decision.created_at).getTime() : null;
+  const skippedAt = new Map<string, number>();
+  for (const skip of decision.skips ?? []) {
+    const at = Date.parse(skip.at);
+    if (!Number.isNaN(at)) skippedAt.set(skip.lotId, Math.min(at, skippedAt.get(skip.lotId) ?? at));
+  }
+  // Skip keeps the lot in mandate.lots and adds it to excludedLotIds. It counts against a decision
+  // unless its Skip is on record as coming later.
+  const ruledOut = (lotId: string) => {
+    if (!mandate.excludedLotIds.includes(lotId)) return false;
+    const at = skippedAt.get(lotId);
+    return at === undefined || decidedAt === null || at <= decidedAt;
+  };
+  const capOf = (lotId: string) => mandate.lots.find((lot) => lot.lotId === lotId);
+  const outsideLot = (lotId: string, cents: number) => {
+    const lot = capOf(lotId);
+    return !lot || ruledOut(lotId) || (lot.capCents !== null && cents > lot.capCents);
+  };
+  const after = decisionLots(decision.detail);
+  if (after.some((lot) => outsideLot(lot.lotId, lot.maxCents))) return true;
+  if (decision.bids.some((bid) => outsideLot(bid.lotId, bid.amountCents) || bid.maxCents === null || bid.amountCents > bid.maxCents)) {
+    return true;
+  }
+  const plannedCents = after.reduce((sum, lot) => sum + lot.maxCents, 0);
+  if (mandate.budgetCents !== null && plannedCents > mandate.budgetCents && !lowerOrDropOnly(decision.detail, after)) return true;
+  return (
+    decision.kind === "autopilot_raise_prepared" &&
+    mandate.budgetCents !== null &&
+    decision.amount_cents !== null &&
+    decision.amount_cents > mandate.budgetCents
+  );
+}
+
+async function readGlimDecisions(db: Queryable, eventId: string): Promise<{ decisions: number; outside: number }> {
+  const { rows } = await db.query<DecisionRow>(
+    // A Skip is the plan_edited action skipLot writes with its lot (src/server/plans/apply.ts).
+    `select a.id, a.kind, a.amount_cents, a.detail, gp.mandate, a.created_at,
+       coalesce((select json_agg(json_build_object('lotId', b.lot_id, 'amountCents', b.amount_cents, 'maxCents', bl.max_cents))
+                 from bids b left join bid_limits bl on bl.id = b.limit_id
+                 where b.glim_action_id = a.id and b.source = 'glim'), '[]'::json) as bids,
+       coalesce((select json_agg(json_build_object('lotId', s.lot_id, 'at', s.created_at))
+                 from glim_actions s
+                 where s.plan_id = a.plan_id and s.kind = 'plan_edited' and s.lot_id is not null), '[]'::json) as skips
+     from glim_actions a
+     join paddles p on p.id = a.paddle_id
+     left join glim_plans gp on gp.id = a.plan_id
+     where p.event_id = $1 and a.decision = 'executed'
+       and a.kind in ('autopilot_changed', 'autopilot_raise_prepared')`,
+    [eventId],
+  );
+  return { decisions: rows.length, outside: rows.filter(decisionOutsideRules).length };
 }
 
 function summarizeSettlement(row: SettlementRow, rows: readonly LedgerRow[]): LedgerSettlement {
   const settled = rows.filter((ledgerRow) => ledgerRow.item?.status === "succeeded");
+  const releasedInFull = settled.filter((ledgerRow) => ledgerRow.toChargeCents === 0).length;
   const countOf = (...statuses: SettlementItemStatus[]) =>
     rows.filter((ledgerRow) => ledgerRow.item && statuses.includes(ledgerRow.item.status)).length;
   return {
@@ -226,6 +360,8 @@ function summarizeSettlement(row: SettlementRow, rows: readonly LedgerRow[]): Le
     failed: countOf("failed"),
     pending: countOf("pending"),
     active: countOf("queued", "processing"),
+    releasedInFull,
+    receipts: row.receipts,
   };
 }
 

@@ -17,16 +17,21 @@ test.use({ channel: "chrome", viewport: { width: 1440, height: 900 } });
 const expect = baseExpect.configure({ timeout: 20_000 });
 
 const databaseUrl = process.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:54329/fairhold_dev";
-const pool = new pg.Pool({ connectionString: databaseUrl, max: 3 });
+let shared: pg.Pool | null = null;
+/** The worker's pool, made again after afterAll ended it: with fullyParallel, afterAll runs after each test. */
+const pool = (): pg.Pool => (shared ??= new pg.Pool({ connectionString: databaseUrl, max: 3 }));
 
 test.afterAll(async () => {
-  await pool.end();
+  const ending = shared;
+  shared = null;
+  await ending?.end();
 });
 
 async function startDemo(page: Page, firstName: string): Promise<string> {
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.getByLabel("First name").fill(firstName);
-  await page.getByRole("button", { name: "Start a demo gala" }).click();
+  // design/16 starts a demo with no name field; the API still takes one, so this spec's creator keeps its name.
+  const started = await page.request.post("/api/demo", { data: { firstName: firstName } });
+  await page.goto(((await started.json()) as { href: string }).href);
   await page.waitForURL(/\/e\/gala-[0-9a-z]{16}$/);
   return new URL(page.url()).pathname;
 }
@@ -44,7 +49,7 @@ async function newGuest(browser: Browser, catalog: string, firstName: string): P
 const slugOf = (catalog: string) => catalog.split("/").at(-1) ?? "";
 
 async function paddle(catalog: string, firstName: string): Promise<{ id: string; eventId: string }> {
-  const { rows } = await pool.query<{ id: string; event_id: string }>(
+  const { rows } = await pool().query<{ id: string; event_id: string }>(
     `select p.id, p.event_id from paddles p join events e on e.id = p.event_id where e.slug = $1 and p.first_name = $2`,
     [slugOf(catalog), firstName],
   );
@@ -56,7 +61,7 @@ async function paddle(catalog: string, firstName: string): Promise<{ id: string;
 /** The hold the PayPal return page would have authorized, on the paddle's live channel. */
 async function hold(catalog: string, firstName: string, amountCents: number): Promise<void> {
   const { id, eventId } = await paddle(catalog, firstName);
-  const client = await pool.connect();
+  const client = await pool().connect();
   try {
     await client.query("begin");
     const { rows } = await client.query<{ id: string }>(
@@ -78,7 +83,8 @@ async function openLot(page: Page, catalog: string, lotNumber = "07"): Promise<v
 }
 
 const bidCard = (page: Page) => page.getByRole("region", { name: "Place a bid" });
-const placeBid = (page: Page) => bidCard(page).getByRole("button", { name: /Place bid/ });
+/** The card's bid button: "Place bid", or "Bid again" once outbid (design/19 state 4). */
+const placeBid = (page: Page) => bidCard(page).getByRole("button", { name: /^(Place bid|Bid again)/ });
 
 /** The first preset's amount in dollars as the card shows it, e.g. "$340". */
 async function nextMinimum(page: Page): Promise<string> {
@@ -224,11 +230,15 @@ test.describe("08 lots", () => {
     const nav = page.getByRole("banner");
     await expect(nav).toContainText("Not set");
     await expect(page.getByRole("region", { name: "My paddle" })).toHaveCount(0);
+    const notSet = page.getByRole("region", { name: "Bidding power not set" });
+    await expect(notSet).toContainText("Set your bidding power to start bidding");
+    await expect(notSet.getByRole("link", { name: "Set bidding power" })).toHaveAttribute("href", `${catalog}/power`);
 
     await hold(catalog, "Sam", 50_000);
 
     await expect(nav).toContainText("$500 / $500");
     await expect(page.getByRole("region", { name: "My paddle" })).toContainText("Bidding power held with PayPal");
+    await expect(notSet).toHaveCount(0);
   });
 
   test("closes tiles, the card and the event's pill when bidding closes", async ({ page }) => {
@@ -239,7 +249,7 @@ test.describe("08 lots", () => {
     await expect(bidCard(page)).toContainText("You’re winning");
 
     const { eventId } = await paddle(catalog, "Sam");
-    await closeEvent(eventId, { pool });
+    await closeEvent(eventId, { pool: pool() });
 
     await expect(bidCard(page)).toContainText(/Won at \d+:\d\d [AP]M/);
     await expect(bidCard(page).getByRole("button", { name: /Place bid/ })).toHaveCount(0);
@@ -248,32 +258,48 @@ test.describe("08 lots", () => {
     await page.goto(catalog, { waitUntil: "networkidle" });
     await expect(page.getByRole("article").filter({ hasText: "Lot 07" })).toContainText(/Won at/);
     await expect(page.getByRole("article").first()).toContainText(/Closed at|Won at/);
+    // Nothing is left for Glim to bid on: 08's band leads to 11 instead.
+    const band = page.getByRole("region", { name: "My paddle" });
+    await expect(band.getByRole("link", { name: "See your receipt" })).toHaveAttribute("href", `${catalog}/receipt`);
+    await expect(band.getByRole("button", { name: "Let Glim bid for me" })).toHaveCount(0);
   });
 });
 
 test.describe("05's bid card", () => {
-  test("says when there is no bidding power, and points to where to set it", async ({ page }) => {
+  test("leads to 09 first when there is no bidding power (design/19 state 6)", async ({ page }) => {
     const catalog = await startDemo(page, "Sam");
     await openLot(page, catalog);
 
-    await placeBid(page).click();
+    await expect(placeBid(page)).toHaveCount(0);
+    await expect(bidCard(page).getByRole("link", { name: "Set bidding power" })).toHaveAttribute(
+      "href",
+      new RegExp(`^${catalog}/power\\?next=${encodeURIComponent(`${catalog}/lots/07`)}$`),
+    );
+    await expect(bidCard(page)).toContainText("Bids are held with PayPal. You’re only charged if you win.");
 
-    const refusal = bidCard(page).getByRole("alert");
-    await expect(refusal).toContainText("Set your bidding power before you bid.");
-    await expect(refusal.getByRole("link", { name: "Set bidding power" })).toHaveAttribute("href", new RegExp(`^${catalog}/power\\?next=`));
+    // A hold landing turns the card back into Place bid, without a reload.
+    await hold(catalog, "Sam", 300_000);
+    await expect(placeBid(page)).toBeVisible();
   });
 
-  test("refuses a bid past the bidding power, with its numbers, and offers a raise", async ({ page }) => {
+  test("shows a bid past the bidding power with its numbers, and offers the raise that covers it (state 3)", async ({ page }) => {
     const catalog = await startDemo(page, "Sam");
     await hold(catalog, "Sam", 10_000);
     await openLot(page, catalog);
     const amount = await nextMinimum(page);
 
-    await placeBid(page).click();
+    await expect(placeBid(page)).toHaveCount(0);
+    const notice = bidCard(page).getByRole("status");
+    await expect(notice).toContainText(`This bid needs ${amount}`);
+    await expect(notice).toContainText("You have $100 left of $100.");
+    const raise = bidCard(page).getByRole("link", { name: "Raise bidding power" });
+    await expect(raise).toHaveAttribute("href", new RegExp(`[?&]raise=${dollars(amount)}(&|$)`));
+    await expect(bidCard(page)).toContainText("You’ll approve another hold in a PayPal window.");
 
-    const refusal = bidCard(page).getByRole("alert");
-    await expect(refusal).toContainText(`This needs ${amount}, and you have $100 left of $100.`);
-    await expect(refusal.getByRole("link", { name: "Raise bidding power" })).toBeVisible();
+    await raise.click();
+    await page.waitForURL(/\/power\?/);
+    await expect(page.getByRole("heading", { name: "Raise your bidding power" })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Hold ${amount} with PayPal` })).toBeVisible();
   });
 
   test("keeps a picked preset while it is on offer, and drops it for the next minimum when it is not", async ({ page, browser }) => {
@@ -311,18 +337,24 @@ test.describe("05's bid card", () => {
     await Promise.all([openLot(page, catalog), openLot(guest.page, catalog)]);
 
     const card = bidCard(page);
+    const setMax = card.getByRole("button", { name: /Set max bid/ });
     await card.getByRole("radio", { name: "Max…" }).click();
-    await card.getByLabel("Your max").fill("abc");
-    await card.getByRole("button", { name: /Set max/ }).click();
-    await expect(card.getByRole("alert")).toContainText("Enter your max in whole dollars.");
+    // Digits only: nothing else can be typed, and there is nothing to set yet.
+    await card.getByLabel("Your max").pressSequentially("abc");
+    await expect(card.getByLabel("Your max")).toHaveValue("");
+    await expect(setMax).toBeDisabled();
+    await expect(card).toContainText("automatically, up to your max.");
 
     await card.getByLabel("Your max").fill("2,000");
-    await expect(card.getByRole("button", { name: /Set max/ })).toContainText("$2,000");
-    await card.getByRole("button", { name: /Set max/ }).click();
+    await expect(card.getByLabel("Your max")).toHaveValue("$2,000");
+    await expect(setMax).toContainText("$2,000");
+    await expect(card).toContainText(/Outbid\? Your bid goes \$\d+ over theirs, automatically, up to \$2,000\./);
+    await setMax.click();
 
-    await expect(card.getByRole("alert")).toContainText("Your max on this lot is $2,000.");
     await expect(card).toContainText("You’re winning");
     await expect(placeBid(page)).toBeVisible();
+    // The max stands, and the card keeps saying what it does.
+    await expect(card).toContainText("automatically, up to $2,000.");
 
     // Kai bids; Sam's max answers at once and Sam stays on top.
     const first = dollars(await nextMinimum(guest.page));
@@ -343,11 +375,13 @@ test.describe("05's bid card", () => {
     await card.getByRole("radio", { name: "Max…" }).click();
     await card.getByLabel("Your max").fill("1");
     await card.getByLabel("Your max").press("Enter");
-    await expect(card.getByRole("alert")).toContainText(`The next minimum bid is ${minimum}.`);
+    await expect(card.getByRole("alert")).toContainText(`Your max has to be at least ${minimum}.`);
+    await expect(card.getByRole("button", { name: /Set max bid/ })).toBeDisabled();
   });
 
   test("sends a guest with no session to join, and back", async ({ page, context }) => {
     const catalog = await startDemo(page, "Sam");
+    await hold(catalog, "Sam", 300_000);
     await openLot(page, catalog);
     await context.clearCookies();
     await placeBid(page).click();
@@ -364,8 +398,8 @@ test.describe("05's bid card", () => {
           window.addEventListener("glim:open", (event) => resolve((event as CustomEvent).detail), { once: true });
         }),
     );
-    await bidCard(page).getByRole("button", { name: /Let the agent bid on this lot/ }).click();
-    expect(await opened).toEqual({ lotNumber: 7 });
+    await bidCard(page).getByRole("button", { name: "Let Glim bid on this lot" }).click();
+    expect(await opened).toEqual({ lotNumber: 7, prefill: "Bid on Chef’s Table for me, up to $" });
   });
 });
 
@@ -453,7 +487,6 @@ test.describe("the live connection", () => {
       if (request.url().includes("/api/stream")) streams.push(request.url());
     });
     await page.goto("/", { waitUntil: "networkidle" });
-    await page.getByLabel("First name").fill("Sam");
     expect(streams).toHaveLength(0);
     await page.getByRole("button", { name: "Start a demo gala" }).click();
     await page.waitForURL(/\/e\/gala-[0-9a-z]{16}$/);
@@ -491,7 +524,7 @@ test.describe("the live connection", () => {
 
   test("runs countdowns on the server's clock, whatever the browser's says", async ({ page }) => {
     const catalog = await startDemo(page, "Sam");
-    const { rows } = await pool.query<{ seconds: number }>(
+    const { rows } = await pool().query<{ seconds: number }>(
       `select extract(epoch from l.closes_at - now())::float8 as seconds
        from lots l join events e on e.id = l.event_id where e.slug = $1 and l.number = 7`,
       [slugOf(catalog)],

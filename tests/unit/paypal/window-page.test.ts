@@ -13,8 +13,8 @@ const approved: PaypalWindowPage = {
   status: 200,
   outcome: "approved",
   holdId: "hold-1",
-  heading: "Bidding power is set",
-  detail: "$500 is on hold with PayPal.",
+  heading: "Approved",
+  detail: "$500 is held with PayPal.\nYou can close this window.",
   backHref: "/e/riverside",
 };
 
@@ -63,7 +63,7 @@ describe("PayPal window page", () => {
     expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
-    await expect(response.text()).resolves.toContain("<h1>Bidding power is set</h1>");
+    await expect(response.text()).resolves.toContain("<h1>Approved</h1>");
   });
 });
 

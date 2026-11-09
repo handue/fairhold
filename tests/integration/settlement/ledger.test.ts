@@ -49,7 +49,7 @@ describe("12 as approved, on the seeded fixture at 9:30 PM", () => {
     expect(view.counts).toEqual({ all: 86, winners: 19, nonWinners: 67 });
     expect(view.totals).toEqual({ heldCents: 4_395_000, toChargeCents: 816_000, toReleaseCents: 3_579_000 });
     expect(view.lots).toEqual({ total: 24, closed: 24, sold: 23, withoutBids: [{ number: 22, title: "Golf Lesson with a Pro" }] });
-    expect(view.glim).toEqual({ bidders: 31, winners: 9, bids: 96 });
+    expect(view.glim).toEqual({ bidders: 31, winners: 9, bids: 96, bidsOutsideLimits: 0, decisions: 0, decisionsOutsideRules: 0 });
     expect(view.holds).toEqual({ real: 0, simulated: 86 });
     expect(view.settlement).toBeNull();
     expect(view.checks).toMatchObject({ passed: true, ranAt: null });
@@ -102,6 +102,9 @@ describe("12 as approved, on the seeded fixture at 9:30 PM", () => {
       failed: 0,
       pending: 0,
       active: 0,
+      // design/24 §3's "Done": the 67 who won nothing, and a receipt for each winner.
+      releasedInFull: 67,
+      receipts: 19,
     });
     // A row's figures stay as they were charged, and it says how it settled.
     expect(charged.rows.find((row) => row.paddleNumber === 142)).toMatchObject({
@@ -171,6 +174,27 @@ describe("the ledger while bidding runs", () => {
     expect(view.checks).toMatchObject({ passed: null });
     expect(view.checks.checks.every((check) => check.passed === null)).toBe(true);
     expect(view.rows.find((row) => row.paddleNumber === 142)).toMatchObject({ toChargeCents: 47_000, toReleaseCents: 3_000, item: null });
+    // The corner's "all within their limits" is read from the bids themselves while bidding runs.
+    expect(view.glim).toMatchObject({ bidsOutsideLimits: 0 });
+    expect(view.glim.bids).toBeGreaterThan(0);
+  });
+
+  it("counts a Glim bid past its limit while bidding runs, so the corner does not claim otherwise", async () => {
+    await createFixtureEvent({ moment: "paddle", on: "2026-11-07" }, pool);
+    await pool.query(
+      `update bid_limits set max_cents = 100 where id = (
+         select b.limit_id from bids b join lots l on l.id = b.lot_id join events e on e.id = l.event_id
+         where e.slug = $1 and b.source = 'glim' and b.limit_id is not null limit 1)`,
+      [FIXTURE_SLUG],
+    );
+    expect((await ledger()).glim.bidsOutsideLimits).toBe(1);
+  });
+
+  it("reads the clock the pages read", async () => {
+    await createFixtureEvent({ moment: "paddle", on: "2026-11-07" }, pool);
+    const before = Date.now();
+    const view = await ledger();
+    expect(view.now).toBeGreaterThanOrEqual(before - 60_000);
   });
 });
 
@@ -269,6 +293,110 @@ describe("a gala with real holds", () => {
 
   it("is null for an unknown event", async () => {
     await expect(getLedgerView("no-such-event", pool)).resolves.toBeNull();
+  });
+});
+
+describe("21's V6 row: Glim's decisions on its own, read back", () => {
+  /** A plan with the guest's rules on paddle 142, and `count` decisions Glim made inside them. */
+  async function decided(spec: {
+    after: { lot: number; maxCents: number }[];
+    bidCents?: number;
+    raiseCents?: number;
+    /** The guest's Skip on a lot, this many seconds from the decision (negative: before it). */
+    skipped?: { lot: number; seconds: number };
+  }) {
+    const gala = await runGala(pool, null, {
+      simulated: [
+        { number: 142, holdCents: 50_000 },
+        { number: 175, holdCents: 50_000 },
+      ],
+      wins: [
+        { number: 142, lot: 7, cents: 30_000 },
+        { number: 142, lot: 9, cents: 10_000 },
+        { number: 175, lot: 12, cents: 5_000 },
+      ],
+      live: true,
+    });
+    const lot = (number: number) => gala.lots.get(number) ?? "";
+    const paddleId = gala.paddles.get(142) ?? "";
+    const mandate = {
+      v: 1,
+      budgetCents: 50_000,
+      lots: [
+        { lotId: lot(7), lotNumber: 7, role: "plan", source: "words", rank: 1, capCents: 38_000 },
+        { lotId: lot(9), lotNumber: 9, role: "backup", source: "heart", rank: 2, capCents: null },
+      ],
+      excludedLotIds: spec.skipped ? [lot(spec.skipped.lot)] : [],
+      guestWords: [],
+      confirmedAt: "2026-11-08T04:00:00.000Z",
+    };
+    const plan = await pool.query<{ id: string }>(
+      `insert into glim_plans (paddle_id, status, budget_cents, proposal, mandate) values ($1, 'active', 50000, '{}'::jsonb, $2::jsonb) returning id`,
+      [paddleId, JSON.stringify(mandate)],
+    );
+    const planId = plan.rows[0]?.id;
+    const detail = { after: spec.after.map((entry, index) => ({ lotId: lot(entry.lot), lotNumber: entry.lot, priority: index + 1, maxCents: entry.maxCents })) };
+    const action = await pool.query<{ id: string }>(
+      `insert into glim_actions (paddle_id, plan_id, lot_id, kind, decision, message, detail)
+       values ($1, $2, $3, 'autopilot_changed', 'executed', 'I moved the money.', $4::jsonb) returning id`,
+      [paddleId, planId, lot(spec.after[0]?.lot ?? 7), JSON.stringify(detail)],
+    );
+    if (spec.skipped) {
+      // skipLot's own record of a Skip: a plan_edited action with the lot.
+      await pool.query(
+        `insert into glim_actions (paddle_id, plan_id, lot_id, kind, decision, message, created_at)
+         values ($1, $2, $3, 'plan_edited', 'executed', 'I stopped bidding on Wine Tasting.',
+                 (select created_at from glim_actions where id = $4) + make_interval(secs => $5))`,
+        [paddleId, planId, lot(spec.skipped.lot), action.rows[0]?.id, spec.skipped.seconds],
+      );
+    }
+    if (spec.bidCents !== undefined) {
+      const limit = await pool.query<{ id: string }>(
+        `insert into bid_limits (paddle_id, lot_id, max_cents, owner) values ($1, $2, 38000, 'glim') returning id`,
+        [paddleId, lot(7)],
+      );
+      await pool.query(
+        `insert into bids (lot_id, paddle_id, amount_cents, source, limit_id, glim_action_id) values ($1, $2, $3, 'glim', $4, $5)`,
+        [lot(7), paddleId, spec.bidCents, limit.rows[0]?.id, action.rows[0]?.id],
+      );
+    }
+    if (spec.raiseCents !== undefined) {
+      await pool.query(
+        `insert into glim_actions (paddle_id, plan_id, lot_id, kind, amount_cents, decision, message, detail)
+         values ($1, $2, $3, 'autopilot_raise_prepared', $4, 'executed', 'Raise to cover it?', '{}'::jsonb)`,
+        [paddleId, planId, lot(7), spec.raiseCents],
+      );
+    }
+    // A proposal the rules turned down is not a decision Glim carried out.
+    await pool.query(
+      `insert into glim_actions (paddle_id, plan_id, kind, decision, reject_reason, message) values ($1, $2, 'proposal_rejected', 'rejected', 'outside_mandate', 'No.')`,
+      [paddleId, planId],
+    );
+    await closeEvent(gala.eventId, { pool });
+    return ledger(gala.slug);
+  }
+
+  it("counts each decision Glim carried out, and finds them all inside the guest's rules", async () => {
+    const view = await decided({ after: [{ lot: 7, maxCents: 38_000 }, { lot: 9, maxCents: 12_000 }], bidCents: 36_000, raiseCents: 45_000 });
+    expect(view.glim).toMatchObject({ decisions: 2, decisionsOutsideRules: 0 });
+  });
+
+  it("finds a decision outside them: a lot the guest never named, above a cap, or a raise past the budget", async () => {
+    expect((await decided({ after: [{ lot: 12, maxCents: 10_000 }] })).glim).toMatchObject({ decisions: 1, decisionsOutsideRules: 1 });
+    expect((await decided({ after: [{ lot: 7, maxCents: 40_000 }] })).glim).toMatchObject({ decisions: 1, decisionsOutsideRules: 1 });
+    expect((await decided({ after: [{ lot: 7, maxCents: 38_000 }], raiseCents: 60_000 })).glim).toMatchObject({
+      decisions: 2,
+      decisionsOutsideRules: 1,
+    });
+    expect((await decided({ after: [{ lot: 7, maxCents: 38_000 }], bidCents: 39_000 })).glim).toMatchObject({ decisionsOutsideRules: 1 });
+  });
+
+  it("finds a plan past the budget in all, and a lot the guest skipped before the decision, not after it", async () => {
+    const over = [{ lot: 7, maxCents: 38_000 }, { lot: 9, maxCents: 40_000 }];
+    expect((await decided({ after: over })).glim).toMatchObject({ decisions: 1, decisionsOutsideRules: 1 });
+    const withWine = [{ lot: 7, maxCents: 38_000 }, { lot: 9, maxCents: 12_000 }];
+    expect((await decided({ after: withWine, skipped: { lot: 9, seconds: -60 } })).glim).toMatchObject({ decisions: 1, decisionsOutsideRules: 1 });
+    expect((await decided({ after: withWine, skipped: { lot: 9, seconds: 60 } })).glim).toMatchObject({ decisions: 1, decisionsOutsideRules: 0 });
   });
 });
 

@@ -61,11 +61,14 @@ describe("event card lines", () => {
     expect(card?.action).toMatchObject({ kind: "limit_reached", chip: "none", triggerAmountCents: 40_000 });
   });
 
-  it("closes a lot with 10's grey chip, won or lost", () => {
+  it("closes a won lot with design/22's lime Won chip, and a lost one with 10's grey chip", () => {
     const won = draft({ kind: "lot_won", lotId: "lot-12", lotNumber: 12, amountCents: 9_000 });
     expect(won?.card.line).toBe("Bidding closed. You won at $90.");
-    expect(won?.card.chip).toEqual({ kind: "closed" });
+    expect(won?.card.chip).toEqual({ kind: "won", amountCents: 9_000 });
+    // No new enum value: the action keeps "closed", and the card's chip derives from lot_won.
+    expect(won?.action).toMatchObject({ kind: "lot_won", chip: "closed" });
     const lost = draft({ kind: "lot_lost", lotId: "lot-21", lotNumber: 21, winningCents: 9_500 });
+    expect(lost?.card.chip).toEqual({ kind: "closed" });
     expect(lost?.card.line).toBe("Bidding closed at $95. You didn’t win, so you won’t be charged.");
     expect(lost?.action.kind).toBe("lot_lost");
     expect(draft({ kind: "lot_lost", lotId: "lot-21", lotNumber: 21, winningCents: null })?.card.line).toBe(

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
+import { paypalStartHref } from "@/app/paypal/window-message";
 import type { CreatedHold } from "@/server/holds/create";
 import type { HoldStatus } from "@/server/paypal/hold-store";
 
@@ -14,9 +15,10 @@ import { holdFlowReducer, IDLE, watchedHoldId, type HoldFlowState } from "./hold
 import {
   browserListenerHost,
   closeWindow,
-  goToApproval,
+  continueInThisTab,
   listenForPaypalWindow,
   openBlankWindow,
+  sendWindowToApproval,
   type PopupLike,
 } from "./hold-window";
 
@@ -32,6 +34,14 @@ export interface UseHoldWindowOptions {
   slug: string;
   /** Where the guest goes once the hold is approved: a page of this event. */
   returnHref: string;
+  /**
+   * Opens the window's hold another way than POST /api/holds/[slug] with the amount on screen: Glim's
+   * prepared raise (design/21 V3) asks its own route, which reads the amount from the stored offer.
+   * Answers like that route. Without it, the hook posts the amount as it always has.
+   */
+  create?: (input: { amountCents: number; next: string }) => Promise<CreatedHold>;
+  /** Stay on this page once the hold is approved, rather than going to returnHref (Glim's panel). */
+  stayOnApproval?: boolean;
 }
 
 export interface HoldWindow {
@@ -48,24 +58,35 @@ export interface HoldWindow {
  * comes from the window itself, from the stream's hold rows and from polling the hold, whichever
  * arrives first; a webhook finishing the hold reaches it only through the last two.
  */
-export function useHoldWindow({ slug, returnHref }: UseHoldWindowOptions): HoldWindow {
+export function useHoldWindow({ slug, returnHref, create, stayOnApproval = false }: UseHoldWindowOptions): HoldWindow {
   const router = useRouter();
   const [state, dispatch] = useReducer(holdFlowReducer, IDLE);
   const popup = useRef<PopupLike | null>(null);
   const currentHoldId = useRef<string | null>(null);
   const holdsPath = `/api/holds/${encodeURIComponent(slug)}`;
 
+  /** A hold whose window the browser blocked (design/17 frame 5), waiting for the guest's press. */
+  const blocked = useRef<{ holdId: string; approvalUrl: string; amountCents: number } | null>(null);
+
   const start = useCallback(
     (amountCents: number) => {
-      popup.current = openBlankWindow(window);
+      // "Continue to PayPal in this tab": the same hold, in this tab, with no new window.
+      if (blocked.current?.amountCents === amountCents) {
+        continueInThisTab(blocked.current, window);
+        return;
+      }
+      blocked.current = null;
+      popup.current = openBlankWindow(window, paypalStartHref(slug, amountCents));
       currentHoldId.current = null;
       dispatch({ type: "start", amountCents });
 
-      apiPost<CreatedHold>(holdsPath, { amountCents, next: returnHref }).then(
+      const request = create ? create({ amountCents, next: returnHref }) : apiPost<CreatedHold>(holdsPath, { amountCents, next: returnHref });
+      request.then(
         ({ holdId, approvalUrl }) => {
           // Before the window moves, so its message can never arrive first.
           currentHoldId.current = holdId;
-          const route = goToApproval(popup.current, approvalUrl, window);
+          const route = sendWindowToApproval(popup.current, approvalUrl);
+          if (route === "blocked") blocked.current = { holdId, approvalUrl, amountCents };
           dispatch({ type: "created", holdId, approvalUrl, route });
         },
         (failure: unknown) => {
@@ -84,11 +105,12 @@ export function useHoldWindow({ slug, returnHref }: UseHoldWindowOptions): HoldW
         },
       );
     },
-    [holdsPath, returnHref, router, slug],
+    [create, holdsPath, returnHref, router, slug],
   );
 
   const reset = useCallback(() => {
     currentHoldId.current = null;
+    blocked.current = null;
     dispatch({ type: "reset" });
   }, []);
 
@@ -148,9 +170,10 @@ export function useHoldWindow({ slug, returnHref }: UseHoldWindowOptions): HoldW
   useEffect(() => {
     if (!approved) return;
     router.refresh();
+    if (stayOnApproval) return;
     const leave = setTimeout(() => window.location.assign(returnHref), RETURN_DELAY_MS);
     return () => clearTimeout(leave);
-  }, [approved, returnHref, router]);
+  }, [approved, returnHref, router, stayOnApproval]);
 
   // A refused approval means the page's figures were out of date.
   const refused = state.phase === "refused";

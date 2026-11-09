@@ -21,7 +21,7 @@ Owner area: settlement. The checks before charging, the capture-or-void queue, r
 
 **Receipts** (`receipt.ts`): written once, in the transaction that stores the charge. `lines` holds the won lots and the lots bid on but not won (`ReceiptLine`), `glim_recap` the counts behind 11's recap (`ReceiptGlimRecap`). A simulated winner gets one too, with no capture id. A lot with no estimated value yields no deductible.
 
-**Reads** (`ledger.ts`): `getLedgerView(slug)` is 12's data, with no PayPal call. **Access** (`access.ts`): `requireControlRoom`, the same rule as the page.
+**Reads** (`ledger.ts`): `getLedgerView(slug)` is 12's data, with no PayPal call. It also carries the server's clock (12's "Closes in" countdown), the receipt and released counts for design/24 §3, and the display-only "Glim stayed inside every guest's rules" row (design/21 V6, C4): executed autopilot actions in `glim_actions` and the bids tied to them, checked against each plan's mandate: the lots it allows (a lot the guest skipped before the decision does not count), each lot's cap and limit, the maximums' sum against the named budget ("Never past $500 in all", except a decision that only lowers or drops, R9), and a raise against that budget. That row never blocks a charge; `checks.ts` is unchanged. `insights.ts` (`getInsightsView(slug)`) is design/28's Insights: raised through the evening, lots sold, bids, winners, limits kept, hold utilization and the top lots, read-only, from the same tables. **Access** (`access.ts`): `requireControlRoom`, the same rule as the page.
 
 **Moving it** (`runner.ts`): routes call `kickSettlementQueue`, and `createSettlementTickTask` keeps it going from the engine tick. Neither waits, so a PayPal call never delays lot closing.
 

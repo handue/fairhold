@@ -1,15 +1,45 @@
-import { FirstNameForm } from "@/ui/entry/FirstNameForm";
+import { Suspense } from "react";
 
-/** Stands in for design/16, plain and with no layout of its own, until that image is approved. */
+import { StartDemoForm } from "@/ui/entry/EntryForms";
+import { FairholdNav } from "@/ui/entry/FairholdNav";
+import { HomeShowcase } from "@/ui/entry/HomeShowcase";
+import { SandboxBuyer } from "@/ui/entry/SandboxBuyer";
+
+/** design/16: the promise and the one action on the left, the product on the right. */
 export default function HomePage() {
   return (
-    <main className="mx-auto max-w-1344 px-48 pt-24 pb-48">
-      <h1 className="text-30 leading-40 font-semibold tracking-title">Fairhold</h1>
-      <p className="mt-8 text-14 text-muted">
-        Charity silent auctions: put bidding power on hold with PayPal, bid, and pay only for what you win.
-      </p>
-      <FirstNameForm endpoint="/api/demo" submitLabel="Start a demo gala" sendTimeZone />
-      <p className="mt-12 text-14 text-muted">A private 25-minute gala with simulated guests. PayPal sandbox, no real money.</p>
-    </main>
+    <>
+      <FairholdNav />
+      <div className="mx-auto max-w-1344 px-48 pt-148 pb-48">
+        <div className="grid grid-cols-[minmax(0,1fr)_544px] gap-x-64">
+          <main>
+            <p className="font-mono text-11.5 leading-16 tracking-caps text-muted uppercase">Charity silent auctions</p>
+            <h1 className="mt-16 text-[52px] leading-58 font-semibold tracking-heading">
+              <span className="block whitespace-nowrap">Put bidding power on hold.</span>
+              <span className="block whitespace-nowrap">Pay only for what you win.</span>
+            </h1>
+            <p className="mt-20 text-16 leading-24 text-ink2">
+              <span className="block whitespace-nowrap">
+                Guests approve <b className="font-medium text-ink">a hold with PayPal, not a charge,</b> then bid on lots
+              </span>
+              <span className="block whitespace-nowrap">or let Glim, a bidding agent, bid for them within their limits.</span>
+            </p>
+
+            <div className="mt-40">
+              <StartDemoForm
+                label="Start a demo gala"
+                meta="Private 25-minute gala · 24 lots · simulated guests · PayPal sandbox, no real money"
+              />
+            </div>
+
+            <Suspense fallback={null}>
+              <SandboxBuyer />
+            </Suspense>
+          </main>
+
+          <HomeShowcase />
+        </div>
+      </div>
+    </>
   );
 }

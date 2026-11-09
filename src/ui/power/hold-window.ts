@@ -9,6 +9,7 @@
  */
 import {
   isPaypalWindowMessage,
+  PAYPAL_IN_TAB_KEY,
   PAYPAL_WINDOW_CHANNEL,
   type PaypalWindowMessage,
 } from "@/app/paypal/window-message";
@@ -30,17 +31,22 @@ export interface OpenerLike {
   readonly location: { assign(url: string): void };
 }
 
-/** Call it inside the click. Null when the browser blocked the window, however it says so. */
-export function openBlankWindow(opener: OpenerLike): PopupLike | null {
+/**
+ * Call it inside the click. Null when the browser blocked the window, however it says so. With
+ * `startUrl` (paypalStartHref, design/17 frame 1) the window opens on "Opening PayPal…" while the
+ * server answers; without it, on a blank page with that line.
+ */
+export function openBlankWindow(opener: OpenerLike, startUrl = ""): PopupLike | null {
   let popup: PopupLike | null;
   try {
-    popup = opener.open("", PAYPAL_WINDOW_NAME, PAYPAL_WINDOW_FEATURES);
+    popup = opener.open(startUrl, PAYPAL_WINDOW_NAME, PAYPAL_WINDOW_FEATURES);
   } catch {
     return null;
   }
   if (!popup || popup.closed) return null;
+  if (startUrl) return popup;
   try {
-    // The blank page stays up until the server answers. Plain until design/17 is approved.
+    // The blank page stays up until the server answers.
     if (popup.document?.body) popup.document.body.textContent = "Opening PayPal…";
   } catch {
     // The window is still usable without its line.
@@ -48,7 +54,42 @@ export function openBlankWindow(opener: OpenerLike): PopupLike | null {
   return popup;
 }
 
-export type WindowRoute = "popup" | "redirect";
+/** "blocked": design/17 frame 5, the guest goes on with "Continue to PayPal in this tab". */
+export type WindowRoute = "popup" | "redirect" | "blocked";
+
+/**
+ * Sends the window to PayPal, or reports it blocked, leaving this tab where it is (design/17 frame
+ * 5 replaces the immediate redirect). A window closed in the meantime counts as blocked.
+ */
+export function sendWindowToApproval(popup: PopupLike | null, approvalUrl: string): "popup" | "blocked" {
+  if (popup && !popup.closed) {
+    try {
+      popup.location.replace(approvalUrl);
+      popup.focus();
+      return "popup";
+    } catch {
+      // A window we can no longer steer is as good as blocked.
+    }
+  }
+  return "blocked";
+}
+
+/**
+ * "Continue to PayPal in this tab": PayPal's return or cancel page will then be this tab, and the
+ * stored hold id tells it so (PAYPAL_IN_TAB_KEY), so it goes back to the auction instead of
+ * offering to close a window.
+ */
+export function continueInThisTab(
+  hold: { holdId: string; approvalUrl: string },
+  opener: { location: { assign(url: string): void }; sessionStorage?: Pick<Storage, "setItem"> },
+): void {
+  try {
+    opener.sessionStorage?.setItem(PAYPAL_IN_TAB_KEY, hold.holdId);
+  } catch {
+    // Without it the return page still finds its way back, after offering to close.
+  }
+  opener.location.assign(hold.approvalUrl);
+}
 
 /**
  * Sends the guest to PayPal: in the window when it is still there, otherwise in this tab. A window

@@ -77,6 +77,12 @@ export interface LotPhotoRecord {
   alt: string | null;
 }
 
+/** A paddle's number by its id, for screens that name who leads or won a lot. */
+export interface PaddleNumberRecord {
+  paddleId: string;
+  number: number;
+}
+
 export interface BidRecord {
   paddleId: string;
   paddleNumber: number;
@@ -99,6 +105,8 @@ export interface GuestReadSource {
   listLotPhotos(lotId: string): Promise<LotPhotoRecord[]>;
   /** The lot's most recent accepted bids, newest first. */
   listLatestBids(lotId: string, limit: number): Promise<BidRecord[]>;
+  /** The numbers of the paddles leading or holding a guest-visible lot, for 08's "Sold to Paddle 117". A fixture may leave it out. */
+  listLeaderNumbers?(eventId: string): Promise<PaddleNumberRecord[]>;
 }
 
 // ---------------------------------------------------------------------------------------------
