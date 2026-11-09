@@ -89,3 +89,31 @@ describe("parseToolCall", () => {
     });
   });
 });
+
+describe("backups and exclusions on the plan tools", () => {
+  it("are strict and required on both plan tools, as integer arrays that may be empty", () => {
+    for (const tool of GLIM_TOOLS.filter((candidate) => candidate.name !== "suggest_hold_amount")) {
+      const schema = tool.input_schema as { required: string[]; properties: Record<string, { type: string; items: { type: string } }> };
+      expect(schema.required).toEqual(["budget_dollars", "items", "backup_lot_numbers", "excluded_lot_numbers"]);
+      for (const field of ["backup_lot_numbers", "excluded_lot_numbers"]) {
+        expect(schema.properties[field]).toMatchObject({ type: "array", items: { type: "integer" } });
+        expect(schema.properties[field]).not.toHaveProperty("minItems");
+      }
+    }
+  });
+
+  it("turn into intent fields only when the guest named some, so proposals recorded before them still parse", () => {
+    const before = { budget_dollars: 500, items: [{ lot_number: 7, priority: 1, cap_dollars: null }] };
+    const parsed = parseToolCall("propose_plan", before);
+    expect(parsed).toEqual({
+      ok: true,
+      call: { kind: "plan", intent: { tool: "propose_plan", budgetCents: 50_000, items: [{ lotNumber: 7, priority: 1, capCents: null }] } },
+    });
+    expect(parseToolCall("propose_plan", { ...before, backup_lot_numbers: [], excluded_lot_numbers: [] })).toEqual(parsed);
+    expect(parseToolCall("propose_change", { ...before, backup_lot_numbers: [9, 9], excluded_lot_numbers: [3] })).toMatchObject({
+      ok: true,
+      call: { intent: { backupLotNumbers: [9], excludedLotNumbers: [3] } },
+    });
+    expect(parseToolCall("propose_plan", { ...before, backup_lot_numbers: [0] }).ok).toBe(false);
+  });
+});

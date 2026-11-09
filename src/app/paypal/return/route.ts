@@ -5,7 +5,7 @@
  */
 import { completeHoldApproval, type ApprovalOutcome } from "@/server/paypal/holds";
 import { formatUsd } from "@/server/paypal/money";
-import { backHrefFor, paypalWindowResponse, type PaypalWindowPage } from "@/server/paypal/window-page";
+import { backHrefFor, paypalWindowResponse, retryHrefFor, type PaypalWindowPage } from "@/server/paypal/window-page";
 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -21,7 +21,7 @@ export async function GET(request: Request): Promise<Response> {
     return paypalWindowResponse({
       status: 500,
       outcome: "error",
-      holdId: null,
+      holdId,
       heading: "Something went wrong",
       detail: "We could not confirm this hold. Nothing new was charged. Please go back and try again.",
       backHref: backHrefFor(next, null),
@@ -54,6 +54,7 @@ function pageFor(outcome: ApprovalOutcome, next: string | null): PaypalWindowPag
     case "declined":
       return {
         ...shared,
+        backHref: retryHrefFor(next, hold.eventSlug),
         status: 200,
         outcome: "declined",
         heading: "PayPal declined the hold",

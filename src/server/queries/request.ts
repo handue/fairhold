@@ -1,8 +1,8 @@
 import { LOT_CATEGORIES, type LotCategory } from "./types";
 
 /**
- * Request parsing for the guest pages. Until the session cookie lands, the viewer is chosen with
- * ?paddle= and defaults to the fixture's paddle 142.
+ * Request parsing for the guest pages. The viewer comes from the session (resolveViewer in
+ * viewer.ts); outside production ?paddle= overrides it, and the fixture's own viewer is paddle 142.
  */
 export const DEFAULT_VIEWER_PADDLE = 142;
 

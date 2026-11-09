@@ -6,7 +6,9 @@
  * (findMoneyMentions in money.ts): a number with a dollar sign or currency word in any common
  * shape, fullwidth or other look-alike digits included, a bare number that is not a time, a lot
  * or paddle number or a count, and any amount spelled out in words, which nothing can vouch for.
+ * A reply that promises an outcome or reads as tax advice (bannedWords.ts) is replaced the same way.
  */
+import { hasBannedClaim } from "./bannedWords";
 import { findMoneyMentions, spelledOutAmountIndex } from "./money";
 
 export interface AmountCheck {
@@ -27,11 +29,14 @@ export interface GuardedReply {
   text: string;
   replaced: boolean;
   check: AmountCheck;
+  /** True when the reply promised an outcome or read as tax advice. */
+  banned: boolean;
 }
 
 export function guardReply(text: string, allowed: ReadonlySet<number>, template: string): GuardedReply {
   const check = checkReplyAmounts(text, allowed);
-  return check.ok ? { text, replaced: false, check } : { text: template, replaced: true, check };
+  const banned = hasBannedClaim(text);
+  return check.ok && !banned ? { text, replaced: false, check, banned } : { text: template, replaced: true, check, banned };
 }
 
 /**
@@ -46,7 +51,7 @@ export interface ReplyStreamGuard {
   readonly text: string;
   /** How much of text has been emitted. */
   readonly emittedLength: number;
-  /** True once a figure the snapshot cannot vouch for appeared; nothing more is emitted. */
+  /** True once a figure the snapshot cannot vouch for, or a banned word, appeared; nothing more is emitted. */
   readonly holding: boolean;
 }
 
@@ -54,7 +59,8 @@ export interface ReplyStreamGuard {
  * Streams a reply while it is generated, but never ahead of the guard: the last few characters
  * wait in case they become a figure, and the stream pauses at the first figure the snapshot does
  * not contain. Plan amounts are only known once the tool call is validated, so a paused reply is
- * decided by guardReply at the end.
+ * decided by guardReply at the end. A banned word stops the stream the moment it is complete: every
+ * one is shorter than the characters held back, so none of it has left yet.
  */
 export function createReplyStreamGuard(
   allowed: ReadonlySet<number>,
@@ -65,8 +71,13 @@ export function createReplyStreamGuard(
   let holding = false;
 
   const advance = () => {
+    if (holding) return;
+    if (hasBannedClaim(text)) {
+      holding = true;
+      return;
+    }
     const stableEnd = text.length - LOOKAHEAD;
-    if (holding || stableEnd <= emitted) return;
+    if (stableEnd <= emitted) return;
     let safeEnd = stableEnd;
     for (const mention of findMoneyMentions(text)) {
       if (mention.end <= emitted) continue;

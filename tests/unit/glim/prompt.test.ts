@@ -134,3 +134,37 @@ describe("buildStateSnapshot", () => {
     );
   });
 });
+
+describe("the chat prompt and snapshot with the autopilot", () => {
+  it("still says Glim only proposes in the chat, and says what the autopilot may do on its own", () => {
+    expect(GLIM_SYSTEM_PROMPT).toContain("You only propose in this chat.");
+    expect(GLIM_SYSTEM_PROMPT).toContain("Glim's autopilot may change the plan on its own, inside the rules the guest confirmed");
+    expect(GLIM_SYSTEM_PROMPT).toContain("never claim a decision that isn't listed there");
+    expect(GLIM_SYSTEM_PROMPT).toContain("backup_lot_numbers");
+    expect(GLIM_SYSTEM_PROMPT).toContain("excluded_lot_numbers");
+  });
+
+  it("lists Glim's recent decisions and lets Glim repeat their amounts", () => {
+    const state = createGoldenState();
+    state.recentDecisions = [
+      {
+        at: new Date("2026-11-08T05:09:30Z"),
+        message: "I moved the $380 left to Wine Tasting. I bid $220 for you and will go up to $380.",
+        amountsCents: [38_000, 22_000],
+      },
+    ];
+    const { text, amounts } = buildStateSnapshot(state);
+    expect(text).toContain(
+      "Glim's recent decisions (made on its own, inside the guest's rules):\n- 9:09 PM · I moved the $380 left to Wine Tasting. I bid $220 for you and will go up to $380.",
+    );
+    expect(amounts.has(22_000)).toBe(true);
+    expect(amounts.has(38_000)).toBe(true);
+  });
+
+  it("says when there are none, and leaves the section out for a state read before the autopilot", () => {
+    const state = createGoldenState();
+    expect(buildStateSnapshot(state).text).not.toContain("recent decisions");
+    state.recentDecisions = [];
+    expect(buildStateSnapshot(state).text).toContain("Glim's recent decisions (made on its own, inside the guest's rules): none.");
+  });
+});

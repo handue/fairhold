@@ -92,7 +92,8 @@ export async function completeHoldApproval(
 
   const { authorization } = authorized;
   if (authorization.status === "PENDING") {
-    // Held for PayPal review; the authorization webhook completes it.
+    // Held for PayPal review. The replay of this request keeps saying so; the authorization webhook,
+    // whose resource says CREATED, completes it (settlement/webhook.ts).
     return { kind: "pending", hold, error: null };
   }
   if (authorization.status !== "CREATED") {
@@ -124,8 +125,10 @@ export async function completeHoldApproval(
   if (stored.kind === "not_pending") {
     // Another delivery of the same approval stored the same authorization first.
     if (stored.status === "authorized") return { kind: "authorized", hold, alreadyAuthorized: true };
-    // Canceled while PayPal was authorizing: nothing may stay held for this hold.
-    await releaseAuthorization(hold.id, hold.kind, authorization.authorizationId, dependencies);
+    // Canceled while PayPal was authorizing: nothing may stay held for this hold. The store kept the
+    // authorization, so if this void fails the sweep retries it.
+    const released = await releaseAuthorization(hold.id, hold.kind, authorization.authorizationId, dependencies);
+    if (released) await store.markReplacedVoided(hold.id);
     return { kind: "not_pending", hold };
   }
 
@@ -166,6 +169,9 @@ export async function cancelHoldApproval(
   if (!hold) return { kind: "not_found" };
   if (isOtherOrder(hold, request.orderId)) return { kind: "order_mismatch", hold };
   if (hold.status !== "pending_approval") return { kind: "not_pending", hold };
+  // Changing a hold takes its order id, which PayPal appends to this URL and only the guest's own
+  // window has. The hold id alone is not enough: an organizer's stream carries every guest's.
+  if (request.orderId === null || request.orderId !== hold.paypalOrderId) return { kind: "order_mismatch", hold };
   const canceled = await dependencies.store.markCanceled(hold.id);
   return canceled ? { kind: "canceled", hold: { ...hold, status: "canceled" } } : { kind: "not_pending", hold };
 }

@@ -3,6 +3,8 @@
  * built from the raw body, then store it once by event id. Applying events to holds and settlement
  * items is a separate step; API responses stay the source of truth and webhooks only reconcile.
  */
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 import { getServerEnv } from "@/server/lib/env";
@@ -96,11 +98,12 @@ export function createWebhookSignatureVerifier(
 ): WebhookSignatureVerifier {
   return {
     async verify(rawBody, transmission) {
+      const body = verificationRequestBody(rawBody, transmission, webhookId);
       const response = await client.postJson(
         "verifyWebhookSignature",
         "/v1/notifications/verify-webhook-signature",
-        verificationRequestBody(rawBody, transmission, webhookId),
-        { "paypal-request-id": paypalRequestId("verify-webhook", transmission.transmissionId) },
+        body,
+        { "paypal-request-id": verificationRequestId(body) },
       );
       let status: unknown;
       try {
@@ -111,6 +114,15 @@ export function createWebhookSignatureVerifier(
       return status === "SUCCESS";
     },
   };
+}
+
+/**
+ * Keyed on everything PayPal checks, not only the transmission id. PayPal replays a repeated request
+ * id, so a forged body under an id it has verified must not get that stored SUCCESS back. A real
+ * redelivery is byte for byte the same, so its retries still share the id.
+ */
+export function verificationRequestId(verificationBody: string): string {
+  return paypalRequestId("verify-webhook", createHash("sha256").update(verificationBody).digest("hex"));
 }
 
 /**

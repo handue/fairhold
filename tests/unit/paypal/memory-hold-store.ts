@@ -65,7 +65,19 @@ export class MemoryHoldStore implements HoldStore {
     this.beforeMarkAuthorized?.();
     const hold = this.holds.get(holdId);
     if (!hold) return { kind: "not_pending", status: null };
-    if (hold.status !== "pending_approval") return { kind: "not_pending", status: hold.status };
+    if (hold.status !== "pending_approval") {
+      const status = hold.status;
+      if (status === "canceled" || status === "denied" || status === "failed") {
+        Object.assign(hold, {
+          status: "replaced" satisfies HoldStatus,
+          replacedByHoldId: null,
+          amountCents: authorization.amountCents,
+          originalAuthorizationId: authorization.authorizationId,
+          currentAuthorizationId: authorization.authorizationId,
+        });
+      }
+      return { kind: "not_pending", status };
+    }
     const current = [...this.holds.values()].find(
       (other) => other.paddleId === hold.paddleId && other.status === "authorized" && other.id !== holdId,
     );

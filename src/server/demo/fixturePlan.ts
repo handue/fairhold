@@ -1,7 +1,7 @@
 /**
- * The approved Jamie state: the Riverside Shelter Gala on its own evening, as it stood at one of
- * the moments the approved screens show (see FIXTURE_MOMENTS). Times are the story's real
- * instants, so a visual check freezes the app's clock at the moment it seeded.
+ * The approved Jamie state: the Riverside Shelter Gala as it stood at one of the moments the
+ * approved screens show (see FIXTURE_MOMENTS), on its own evening or moved to another one with its
+ * wall-clock times kept. A visual check freezes the app's clock at the moment it seeded.
  */
 import { deriveBotProfiles } from "./botProfiles";
 import { glimChip, glimLine } from "./glimLines";
@@ -19,15 +19,34 @@ import { replayAuction } from "./replay";
 import { JAMIE, SIMULATED_GUESTS } from "./roster";
 import { storyLotClosesAt } from "./schedule";
 import { JAMIE_FAVORITES, riversideStory } from "./story";
-import { FIXTURE_MOMENTS, MINUTE, STORY_CLOSES_AT, STORY_OPENS_AT, type FixtureMoment } from "./storyClock";
+import { FIXTURE_MOMENTS, MINUTE, STORY_CLOSES_AT, STORY_OPENS_AT, storyShiftMs, type FixtureMoment } from "./storyClock";
 import { FIXTURE_SLUG, RIVERSIDE_EVENT, TEMPLATE_KEY, templateLot } from "./template";
 
 export interface FixturePlanInput {
   moment: FixtureMoment;
   slug?: string;
+  /** The evening to hold the gala on, "YYYY-MM-DD"; the story's own date by default. */
+  on?: string;
 }
 
-export function buildFixtureEventPlan({ moment, slug = FIXTURE_SLUG }: FixturePlanInput): EventPlan {
+export function buildFixtureEventPlan({ moment, slug = FIXTURE_SLUG, on }: FixturePlanInput): EventPlan {
+  const plan = buildStoryPlan(moment, slug);
+  return on === undefined ? plan : moveDates(plan, storyShiftMs(on));
+}
+
+/** Every Date in a plan's rows moved by `shiftMs`; nothing else changes. */
+function moveDates<T>(value: T, shiftMs: number): T {
+  if (value instanceof Date) return new Date(value.getTime() + shiftMs) as T;
+  if (Array.isArray(value)) return value.map((item: unknown) => moveDates(item, shiftMs)) as T;
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]: [string, unknown]) => [key, moveDates(item, shiftMs)]),
+    ) as T;
+  }
+  return value;
+}
+
+function buildStoryPlan(moment: FixtureMoment, slug: string): EventPlan {
   const at = FIXTURE_MOMENTS[moment];
   const script = riversideStory({ withJamie: true });
   const state = replayAuction(script, at);

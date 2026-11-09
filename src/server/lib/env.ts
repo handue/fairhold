@@ -54,6 +54,8 @@ const serverEnvSchema = z
       .enum(["true", "false"])
       .default("false")
       .transform((value) => value === "true"),
+    // Glim's autopilot (docs/planning/glim-autopilot.md); it runs only where the engine ticks.
+    GLIM_AUTOPILOT: z.enum(["on", "off"]).default("on"),
   })
   .superRefine((env, ctx) => {
     const requireKey = (key: keyof typeof env, condition: string) => {

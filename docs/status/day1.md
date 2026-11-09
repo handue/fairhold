@@ -155,7 +155,8 @@ GLIM_MODE=live npm run glim:spike         # must print Chef's Table $380 and Spa
   - The count depends only on interleaving. Replayed one operation at a time on the in-memory store, the waves give 25 proxy bids in the test's own order, 62 with every max first and 3 with every manual bid first.
   - No deadlock, lock timeout or invariant failure appeared in that test's own checks or in the Postgres log.
   - `tests/unit/db/schema-contract.test.ts` runs drizzle-kit's diff, which twice exceeded the 5-second unit timeout.
-  - A sturdier check (a count independent of interleaving, a longer timeout) is your call.
+  - Both checks are now sturdier: the concurrency test asks only that some proxy bids fired, and the diff has 30 seconds.
+- **First CI run (Nov 4):** all 373 tests passed, but 16 unhandled 57P01 errors failed the run. `Pool.end()` resolves before its connections are gone, and the test database was force-dropped while the concurrency test's 50 connections were still closing (locally, up to 28 were still connected right after `end()`). The drop in `tests/helpers/database.ts` now waits up to 5 seconds for the database's connections to leave; locally that wait takes 3 to 5 ms.
 
 ## Run it locally
 

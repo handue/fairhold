@@ -1,0 +1,20 @@
+{
+  "name": "autopilot-closing-priority",
+  "description": "Recorded live from claude-opus-5-5 on 2026-11-07 (npm run glim:spike -- --autopilot closing-priority --record).",
+  "fixtureKey": "autopilot:closing_soon:7:7",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"action\":\"change\",\"lots\":[{\"lot_number\":7,\"priority\":1,\"max_dollars\":null},{\"lot_number\":12,\"priority\":2,\"max_dollars\":90}],\"raise_to_dollars\":null,\"reason\":\"closing_soon\",\"why\":\"I gave the chef's dinner more room before it closes, since you want it most, and held the spa day at your current leading bid.\"}"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ]
+}

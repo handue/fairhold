@@ -61,6 +61,20 @@ describe("GET /paypal/return", () => {
     expect(html).toContain('"outcome":"declined"');
   });
 
+  it("sends a declined guest back to bidding power to try again, not on to bid", async () => {
+    vi.mocked(completeHoldApproval).mockResolvedValue({
+      kind: "declined",
+      hold: { ...hold, status: "denied" },
+      error: new PaypalError({ operation: "authorizeOrder", code: "INSTRUMENT_DECLINED" }),
+    });
+
+    const html = await (
+      await returnGet(new Request("https://fairhold.example/paypal/return?hold=hold-1&next=%2Fe%2Friverside%2Flots%2F7&token=ORDER1"))
+    ).text();
+
+    expect(html).toContain('href="/e/riverside/power?next=%2Fe%2Friverside%2Flots%2F7"');
+  });
+
   it("says the bidding power stayed as it was when a stale raise is refused, and stays open", async () => {
     vi.mocked(completeHoldApproval).mockResolvedValue({
       kind: "refused",
@@ -89,7 +103,10 @@ describe("GET /paypal/return", () => {
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
     const response = await returnGet(new Request("https://fairhold.example/paypal/return?hold=hold-1"));
     expect(response.status).toBe(500);
-    expect(await response.text()).toContain('"outcome":"error"');
+    const html = await response.text();
+    expect(html).toContain('"outcome":"error"');
+    // The tab that opened the window is waiting on this hold, so it has to hear which one failed.
+    expect(html).toContain('"holdId":"hold-1"');
     errorLog.mockRestore();
   });
 });
@@ -103,6 +120,16 @@ describe("GET /paypal/cancel", () => {
     expect(cancelHoldApproval).toHaveBeenCalledWith({ holdId: "hold-1", orderId: "ORDER1" });
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('"outcome":"canceled"');
+  });
+
+  it("sends a canceled guest back to bidding power, keeping the way back", async () => {
+    vi.mocked(cancelHoldApproval).mockResolvedValue({ kind: "canceled", hold: { ...hold, status: "canceled" } });
+
+    const html = await (
+      await cancelGet(new Request("https://fairhold.example/paypal/cancel?hold=hold-1&next=%2Fe%2Friverside%2Flots%2F7&token=ORDER1"))
+    ).text();
+
+    expect(html).toContain('href="/e/riverside/power?next=%2Fe%2Friverside%2Flots%2F7"');
   });
 
   it("reports an already approved hold as approved", async () => {

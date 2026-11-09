@@ -107,6 +107,18 @@ export function backHrefFor(next: string | null, eventSlug: string | null): stri
   return url.origin === BASE && ofThisEvent ? `${url.pathname}${url.search}${url.hash}` : eventPage;
 }
 
+/**
+ * Where a guest goes to try again after a canceled or declined window: the event's bidding power
+ * page, still holding the way back to `next`.
+ */
+export function retryHrefFor(next: string | null, eventSlug: string | null): string {
+  if (!eventSlug) return "/";
+  const eventPage = `/e/${encodeURIComponent(eventSlug)}`;
+  const power = `${eventPage}/power`;
+  const onward = backHrefFor(next, eventSlug);
+  return onward === eventPage || onward.split(/[?#]/)[0] === power ? power : `${power}?next=${encodeURIComponent(onward)}`;
+}
+
 export function escapeHtml(text: string): string {
   return text
     .replaceAll("&", "&amp;")

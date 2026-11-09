@@ -1,0 +1,20 @@
+{
+  "name": "autopilot-outside-mandate",
+  "description": "Hand-written, not recorded: a decision that names Lot 03, which is outside the guest's mandate. Code rejects it (outside_mandate, logged as proposal_rejected) and the deterministic rule decides instead.",
+  "fixtureKey": "autopilot:limit_exhausted:12:7",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"action\":\"change\",\"lots\":[{\"lot_number\":7,\"priority\":1,\"max_dollars\":null},{\"lot_number\":3,\"priority\":2,\"max_dollars\":null}],\"raise_to_dollars\":null,\"reason\":\"money_freed\",\"why\":\"The spa got away, so I am putting that money on the cabin as well.\"}"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ]
+}

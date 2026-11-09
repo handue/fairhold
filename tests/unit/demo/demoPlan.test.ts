@@ -162,5 +162,8 @@ describe("demo identity", () => {
     expect(normalizeFirstName("  Mary   Ann ")).toBe("Mary Ann");
     expect(() => normalizeFirstName("   ")).toThrow(RangeError);
     expect(() => normalizeFirstName("x".repeat(41))).toThrow(RangeError);
+    expect(normalizeFirstName("Zoë 🦊")).toBe("Zoë 🦊");
+    expect(() => normalizeFirstName("Sam\u0000")).toThrow(RangeError);
+    expect(() => normalizeFirstName("Sa\u202Em")).toThrow(RangeError);
   });
 });

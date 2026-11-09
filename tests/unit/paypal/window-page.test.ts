@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { isPaypalWindowMessage, PAYPAL_WINDOW_CHANNEL } from "@/app/paypal/window-message";
-import { backHrefFor, paypalWindowResponse, renderPaypalWindowHtml, type PaypalWindowPage } from "@/server/paypal/window-page";
+import {
+  backHrefFor,
+  paypalWindowResponse,
+  renderPaypalWindowHtml,
+  retryHrefFor,
+  type PaypalWindowPage,
+} from "@/server/paypal/window-page";
 
 const approved: PaypalWindowPage = {
   status: 200,
@@ -89,5 +95,26 @@ describe("backHrefFor", () => {
   it("falls back to the home page without an event, whatever next says", () => {
     expect(backHrefFor(null, null)).toBe("/");
     expect(backHrefFor("/e/riverside/lots/7", null)).toBe("/");
+  });
+});
+
+describe("retryHrefFor", () => {
+  it("goes to the event's bidding power page", () => {
+    expect(retryHrefFor(null, "riverside")).toBe("/e/riverside/power");
+    expect(retryHrefFor("/e/riverside", "riverside")).toBe("/e/riverside/power");
+    expect(retryHrefFor("/e/riverside/power?raise", "riverside")).toBe("/e/riverside/power");
+  });
+
+  it("keeps the way back to the page the guest came from", () => {
+    expect(retryHrefFor("/e/riverside/lots/7", "riverside")).toBe("/e/riverside/power?next=%2Fe%2Friverside%2Flots%2F7");
+  });
+
+  it("trusts a next no more than backHrefFor does", () => {
+    expect(retryHrefFor("//evil.example", "riverside")).toBe("/e/riverside/power");
+    expect(retryHrefFor("/e/other/lots/7", "riverside")).toBe("/e/riverside/power");
+  });
+
+  it("goes home when the hold's event is unknown", () => {
+    expect(retryHrefFor("/e/riverside/lots/7", null)).toBe("/");
   });
 });

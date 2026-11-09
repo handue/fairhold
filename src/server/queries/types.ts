@@ -36,6 +36,8 @@ export interface PaddleRecord {
   firstName: string;
   /** The paddle's active (authorized) hold, or null when bidding power is not set. */
   holdCents: number | null;
+  /** That hold's id, so the stream can tell a change to it from one to an older hold. */
+  holdId?: string | null;
 }
 
 export interface LotRecord {
@@ -86,6 +88,8 @@ export interface BidRecord {
 export interface GuestReadSource {
   /** The clock views are computed against; the database clock in production. */
   currentTime(): Promise<Instant>;
+  /** The event's newest event_log row, read before the rows it covers; a fixture has none. */
+  streamPosition?(slug: string): Promise<string>;
   findEvent(slug: string): Promise<EventRecord | null>;
   findPaddle(eventId: string, paddleNumber: number): Promise<PaddleRecord | null>;
   /** Every lot that guests can see (not drafts), in lot-number order. */

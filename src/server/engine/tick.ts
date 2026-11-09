@@ -45,9 +45,12 @@ export function createEngineTick(options: EngineTickOptions = {}): EngineTick {
 
 const processGlobal = globalThis as typeof globalThis & { __fairholdEngineTick?: EngineTick };
 
-/** The process-wide tick, started at most once per process (instrumentation.ts calls this). */
-export function startEngineTick(): EngineTick {
-  processGlobal.__fairholdEngineTick ??= createEngineTick();
+/**
+ * The process-wide tick, started at most once per process (instrumentation.ts calls this).
+ * `extraTasks` run after the default ones in each round, such as Glim's autopilot.
+ */
+export function startEngineTick(extraTasks: readonly TickTask[] = []): EngineTick {
+  processGlobal.__fairholdEngineTick ??= createEngineTick({ tasks: [...DEFAULT_TICK_TASKS, ...extraTasks] });
   return processGlobal.__fairholdEngineTick;
 }
 

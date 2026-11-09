@@ -13,9 +13,16 @@ Owner area: design system and the guest pages' UI. Ported from the approved mock
 
 `PaddleMark` (brand, winning, outbid, closed), `Orb` (68, 38, 32, 26, 22, 18; `glow="soft"` for 05's agent link), `StatusPill`, `Button` / `buttonClass` (lime, ink, outline, quiet, ghost at 30/36/40/48/56px), `EventNav` (brand, status pill, links, bidding power and paddle pills), `GlimBand`, `CornerOrb`, `Eyebrow`, `Money`, the line icons, and `drawings/` (`LotIllustration` plus every lot drawing in the approved HTML; `RIVERSIDE_LOT_DRAWINGS` maps template lots to them and the seed stores those keys).
 
-Screens: `catalog/CatalogScreen` (08) and `lot/LotDetailScreen` (05), fed by `src/server/queries`.
+Screens: `catalog/CatalogScreen` (08) and `lot/LotDetailScreen` (05), fed by `src/server/queries`; `power/` (09, its own README); `glim/` (07, the panel and its cards, with `CornerOrb` and `event/GlimSlot`); `organizer/` (12, its own README). `live/` is the browser's side of the stream (its own README).
 
-Countdowns and "2 min ago" run on the server's clock through `ServerClockProvider`. Controls whose server side lands later render in their final form and log through `logPendingAction` (search for it to find what is left to wire).
+Countdowns and "2 min ago" run on the server's clock through `ServerClockProvider`. Every control on these screens is wired; a state whose image is not approved yet renders plain, and docs/status/day2.md lists each one with the design file that replaces it.
+
+## Contracts
+
+- `api.ts`: the browser's fetch wrapper. `apiGet`, `apiPost` and `apiFetch` return the JSON or throw `ApiClientError` with the server's `code`, `message` and `details`.
+- `glim-events.ts`: `openGlim({ lotNumber?, prefill? })` opens the chat from anywhere, and the panel listens with `onGlimOpen`. `GlimOpenButton` is the same for a server component.
+- `event/LiveProviders.tsx` and `event/GlimSlot.tsx`: what the shared layout (`src/app/e/[slug]/layout.tsx`) renders around every page of an event. The live layer and the Glim panel each fill in their own file.
+- `entry/FirstNameForm.tsx`: the plain form behind the home and join pages, until design/16 and 16b are approved.
 
 ## Fixture and visual checks
 

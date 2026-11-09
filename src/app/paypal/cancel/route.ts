@@ -1,10 +1,10 @@
 /**
  * PayPal's cancel_url: the buyer backed out on PayPal's page. Marks the pending hold canceled and
  * tells the opener. PayPal appends ?token=<order id> to the ?hold=<hold id>&next=<path> that
- * Fairhold put in the URL.
+ * Fairhold put in the URL, and without that token nothing changes (cancelHoldApproval).
  */
 import { cancelHoldApproval, type CancelOutcome } from "@/server/paypal/holds";
-import { backHrefFor, paypalWindowResponse, type PaypalWindowPage } from "@/server/paypal/window-page";
+import { backHrefFor, paypalWindowResponse, retryHrefFor, type PaypalWindowPage } from "@/server/paypal/window-page";
 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -20,7 +20,7 @@ export async function GET(request: Request): Promise<Response> {
     return paypalWindowResponse({
       status: 500,
       outcome: "error",
-      holdId: null,
+      holdId,
       heading: "Something went wrong",
       detail: "Nothing was held. Please go back to the auction.",
       backHref: backHrefFor(next, null),
@@ -54,6 +54,8 @@ function pageFor(outcome: CancelOutcome, next: string | null): PaypalWindowPage 
   }
   return {
     ...shared,
+    // After a full-page redirect there is no other tab to try again from.
+    backHref: retryHrefFor(next, hold.eventSlug),
     status: 200,
     outcome: "canceled",
     heading: "Hold canceled",

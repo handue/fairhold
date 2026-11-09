@@ -45,8 +45,19 @@ const planInputSchema: Tool["input_schema"] = {
         additionalProperties: false,
       },
     },
+    backup_lot_numbers: {
+      type: "array",
+      description:
+        "Lots the guest said Glim may switch to if a planned lot gets away (\"the wine tasting is my backup\"), by lot number. Empty when they named none; Fairhold adds the lots they hearted.",
+      items: { type: "integer" },
+    },
+    excluded_lot_numbers: {
+      type: "array",
+      description: "Lots the guest ruled out (\"not the cabin\"), by lot number; Glim never bids on them. Empty when they ruled out none.",
+      items: { type: "integer" },
+    },
   },
-  required: ["budget_dollars", "items"],
+  required: ["budget_dollars", "items", "backup_lot_numbers", "excluded_lot_numbers"],
   additionalProperties: false,
 };
 
@@ -56,14 +67,14 @@ export const GLIM_TOOLS: Tool[] = [
   {
     name: "propose_plan",
     description:
-      "Propose a bidding plan for the guest to review. Call it when the guest has no plan yet and has told you a budget and the lots they want. You state only intent: the budget, each lot's priority and any cap the guest named. Fairhold's code sets each lot's maximum (caps first, the rest of the budget to priority 1, every maximum at or above the lot's next minimum bid), checks it against the guest's bidding power and shows a plan card. Nothing is bid until the guest clicks Start bidding.",
+      "Propose a bidding plan for the guest to review. Call it when the guest has no plan yet and has told you a budget and the lots they want. You state only intent: the budget, each lot's priority, any cap the guest named, any lots they named as backups and any lots they ruled out. Fairhold's code sets each lot's maximum (caps first, the rest of the budget to priority 1, every maximum at or above the lot's next minimum bid), checks it against the guest's bidding power and shows a plan card. Nothing is bid until the guest clicks Start bidding.",
     strict: true,
     input_schema: planInputSchema,
   },
   {
     name: "propose_change",
     description:
-      "Propose a change to the guest's existing plan: dropping a lot, adding one, or changing a cap or the budget. Send the complete revised plan (every lot that stays, with its priority and cap, plus new lots; leave out lots to drop). To keep a lot's maximum unchanged, set its cap to its current maximum from the snapshot; pass a budget only if the guest changed it. Bids already placed stand. Fairhold checks the change and shows it as a card; nothing changes until the guest confirms.",
+      "Propose a change to the guest's existing plan: dropping a lot, adding one, changing a cap or the budget, or naming a backup or a lot to rule out. Send the complete revised plan (every lot that stays, with its priority and cap, plus new lots; leave out lots to drop). To keep a lot's maximum unchanged, set its cap to its current maximum from the snapshot; pass a budget only if the guest changed it. Bids already placed stand. Fairhold checks the change and shows it as a card; nothing changes until the guest confirms.",
     strict: true,
     input_schema: planInputSchema,
   },
@@ -99,6 +110,8 @@ export const GLIM_TOOL_CHOICE: Anthropic.Beta.BetaToolChoiceAuto = {
 
 const wholeDollars = z.number().int().min(1).max(1_000_000);
 
+const lotNumbers = z.array(z.number().int().min(1).max(9_999)).max(50);
+
 const planInputParser = z.object({
   budget_dollars: wholeDollars.nullable(),
   items: z
@@ -111,6 +124,9 @@ const planInputParser = z.object({
     )
     .min(1)
     .max(50),
+  // Required by the strict schema; the defaults keep proposals recorded before them parsing.
+  backup_lot_numbers: lotNumbers.default([]),
+  excluded_lot_numbers: lotNumbers.default([]),
 });
 
 const holdInputParser = z.object({
@@ -132,6 +148,8 @@ export function parseToolCall(name: string, input: unknown): ParsedToolCall {
   if (name === "propose_plan" || name === "propose_change") {
     const parsed = planInputParser.safeParse(input);
     if (!parsed.success) return { ok: false, message: describeZodError(name, parsed.error) };
+    const backups = [...new Set(parsed.data.backup_lot_numbers)];
+    const excluded = [...new Set(parsed.data.excluded_lot_numbers)];
     return {
       ok: true,
       call: {
@@ -144,6 +162,8 @@ export function parseToolCall(name: string, input: unknown): ParsedToolCall {
             priority: item.priority,
             capCents: item.cap_dollars === null ? null : dollarsToCents(item.cap_dollars),
           })),
+          ...(backups.length > 0 ? { backupLotNumbers: backups } : {}),
+          ...(excluded.length > 0 ? { excludedLotNumbers: excluded } : {}),
         },
       },
     };

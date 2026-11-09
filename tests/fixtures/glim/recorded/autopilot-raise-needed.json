@@ -1,0 +1,20 @@
+{
+  "name": "autopilot-raise-needed",
+  "description": "Recorded live from claude-opus-5-5 on 2026-11-07 (npm run glim:spike -- --autopilot raise-needed --record).",
+  "fixtureKey": "autopilot:limit_exhausted:7:7",
+  "responses": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"action\":\"prepare_raise\",\"lots\":[{\"lot_number\":7,\"priority\":1,\"max_dollars\":null},{\"lot_number\":12,\"priority\":2,\"max_dollars\":null}],\"raise_to_dollars\":540,\"reason\":\"raise_needed\",\"why\":\"You said the chef's dinner matters most, so I'm asking you to approve more bidding power to stay in for it while keeping the spa day.\"}"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    }
+  ]
+}

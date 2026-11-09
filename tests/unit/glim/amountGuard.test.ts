@@ -94,6 +94,33 @@ describe("guardReply", () => {
   });
 });
 
+describe("guardReply and the brand rule", () => {
+  it.each([
+    "Your win is guaranteed.",
+    "A guarantee I can make: you'll win this one.",
+    "You will win it at this price.",
+    "That's fully tax-deductible.",
+    "Your receipt lists what you can deduct.",
+    "Above the FMV you can write it off.",
+    "The IRS is fine with that.",
+    "It's over the fair market value.",
+    "Your win is ｇｕａｒａｎｔｅｅｄ.",
+    "Your win is guar\u200banteed.",
+  ])("replaces %s", (text) => {
+    expect(guardReply(text, new Set(), TEMPLATE)).toMatchObject({ text: TEMPLATE, replaced: true, banned: true });
+  });
+
+  it.each([
+    "Certainly. I'll bid up to the maximum for you.",
+    "You pay only for what you win.",
+    "You're winning Spa Day. I'll stay on it.",
+    "I promise to tell you when I bid.",
+    "Definitely worth a look, and I'll watch it for you.",
+  ])("leaves %s", (text) => {
+    expect(guardReply(text, new Set(), TEMPLATE)).toMatchObject({ text, replaced: false, banned: false });
+  });
+});
+
 describe("createReplyStreamGuard", () => {
   function stream(deltas: string[], allowed: ReadonlySet<number>) {
     const emitted: string[] = [];
@@ -101,6 +128,20 @@ describe("createReplyStreamGuard", () => {
     for (const delta of deltas) guard.push(delta);
     return { guard, shown: emitted.join("") };
   }
+
+  it.each([1, 3, 8, 200])("never lets a banned word out, in pieces of %i", (size) => {
+    const reply = "I'll bid up to the maximum on the Chef's Table tonight. Your win is guaranteed, so leave the rest of it to me for now.";
+    const { guard, shown } = stream(reply.match(new RegExp(`.{1,${size}}`, "g")) ?? [], new Set());
+    expect(guard.holding).toBe(true);
+    expect(reply.startsWith(shown)).toBe(true);
+    expect(shown).not.toMatch(/guar/i);
+  });
+
+  it("never lets a banned phrase out across pieces", () => {
+    const { guard, shown } = stream(["It's well over the fair mar", "ket value of the lot, by a long way, as far as I can tell tonight."], new Set());
+    expect(guard.holding).toBe(true);
+    expect(shown).not.toMatch(/market/i);
+  });
 
   it("streams text and figures the snapshot vouches for, holding back only the tail", () => {
     const reply = "Your bidding power is $500 and the Chef's Table is at $320, so you're in good shape tonight.";

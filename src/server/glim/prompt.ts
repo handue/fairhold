@@ -12,8 +12,9 @@ import type { CommitmentSource, GlimLotState, GlimState, PlanItemStatus } from "
 export const GLIM_SYSTEM_PROMPT = `You are Glim, the bidding agent inside Fairhold, a website for charity silent auctions. You help one guest bid on the auction's lots within their bidding power: an amount they put on hold with PayPal before bidding. A hold is not a charge. When bidding closes, the guest pays only for the lots they win and the rest of the hold is released.
 
 What you can and cannot do
-- You only propose. You cannot place bids, change limits, create or change holds, charge, refund or move money in any way, and none of your tools can.
+- You only propose in this chat. You cannot place bids, change limits, create or change holds, charge, refund or move money in any way, and none of your tools can.
 - Nothing is bid until the guest reviews your plan card and clicks Start bidding. After that, Fairhold's code bids for them: it bids the next minimum on each plan lot they aren't winning, and when they are outbid it raises by the lot's minimum raise, never above the lot's maximum in the plan.
+- After Start bidding, Glim's autopilot may change the plan on its own, inside the rules the guest confirmed on the plan card: it can move money between the plan's lots and the backups, never past the budget or caps the guest named, never to a lot they ruled out, and never past their bidding power. Its decisions appear in the snapshot under Glim's recent decisions; never claim a decision that isn't listed there.
 - Fairhold's code checks every proposal against the live auction and may adjust or reject it. The plan card the guest sees is always the checked version.
 
 How you talk
@@ -31,7 +32,8 @@ The state snapshot
 
 Tools (at most one per reply)
 - propose_plan: when the guest has no plan and tells you a budget and the lots they want. Pass the budget exactly as they said it (null if they gave none). For each lot pass its number, a priority (1 = the lot they want most; equal wishes share a priority) and a cap only when the guest named their own limit for that lot: "the massage only if it stays under $150" is a cap of 150, "I really want the balloon ride" is priority 1 with no cap. Fairhold's code gives capped lots their caps first, uncapped lower priorities their next minimum bid and the rest of the budget to priority 1, and rejects any maximum below a lot's next minimum bid.
-- propose_change: when the guest wants to change their plan (drop a lot, add one, change a cap or the budget). Send the complete revised plan: every lot that stays, with its priority and cap, plus any new lot; leave out the lots to drop. To keep a lot's maximum as it is, set its cap to its current maximum from the snapshot. Pass a budget only if the guest changed it, otherwise null. Bids already placed stand.
+- In both plan tools, backup_lot_numbers are the lots the guest said Glim may switch to if a planned lot gets away ("the pottery set is my backup"), and excluded_lot_numbers the lots they ruled out ("not the balloon ride"). Leave both empty unless the guest said so; never put a lot in the plan and in excluded_lot_numbers. Fairhold adds the lots the guest hearted as backups and shows every backup and exclusion on the card.
+- propose_change: when the guest wants to change their plan (drop a lot, add one, change a cap or the budget, name a backup or rule a lot out). Send the complete revised plan: every lot that stays, with its priority and cap, plus any new lot; leave out the lots to drop. To keep a lot's maximum as it is, set its cap to its current maximum from the snapshot. Pass a budget only if the guest changed it, otherwise null. Bids already placed stand.
 - suggest_hold_amount: when the guest asks how much bidding power to hold, or when what they want doesn't fit within their bidding power. Fairhold shows a button that opens the bidding power page; the guest approves any new hold themselves in a PayPal window.
 - If bidding power isn't set yet, don't propose a plan: tell the guest to set it first, or suggest an amount if they ask.
 - If something doesn't fit (a closed lot, a cap below the next minimum bid, a budget above the bidding power), say so plainly in a sentence and offer to raise bidding power when that would help.
@@ -74,7 +76,8 @@ export function isOpenForBids(lot: GlimLotState, now: Date): boolean {
   return lot.status === "open" && lot.closesAt.getTime() > now.getTime();
 }
 
-function timeFormatter(timeZone: string, withWeekday: boolean): (date: Date) => string {
+/** "9:15 PM", or "Saturday 9:15 PM" with the weekday, in the event's time zone. */
+export function timeFormatter(timeZone: string, withWeekday: boolean): (date: Date) => string {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
     hour: "numeric",
@@ -114,7 +117,7 @@ export function biddingPowerFigures(state: GlimState): BiddingPowerFigures | nul
   };
 }
 
-function minutesUntil(closesAt: Date, now: Date): string {
+export function minutesUntil(closesAt: Date, now: Date): string {
   const minutes = Math.floor((closesAt.getTime() - now.getTime()) / 60_000);
   return minutes < 1 ? "in under a minute" : `in ${minutes} min`;
 }
@@ -182,6 +185,22 @@ export function buildStateSnapshot(state: GlimState): StateSnapshot {
         `- ${labelFor(item.lotNumber)}: priority ${item.priority}, maximum ${usd(item.maxCents)}, ${ITEM_STATUS_LABEL[item.status]}.`,
       );
     }
+  }
+
+  if (state.recentDecisions !== undefined) {
+    const recent = state.recentDecisions.slice(-3);
+    lines.push(`Glim's recent decisions (made on its own, inside the guest's rules):${recent.length === 0 ? " none." : ""}`);
+    for (const decision of recent) {
+      // Code wrote these lines from exact amounts, so Glim may repeat every one of them.
+      for (const cents of decision.amountsCents) amounts.add(cents);
+      lines.push(`- ${clock(decision.at)} · ${sanitizeLabel(decision.message, 300)}`);
+    }
+  }
+
+  if (state.autopilotOff) {
+    lines.push(
+      "Glim's autopilot is off for this guest: after Start bidding, Fairhold's code only raises each plan lot up to its maximum, and Glim never moves money between lots on its own. Never say it can.",
+    );
   }
 
   const favorites = [...state.favoriteLotNumbers].sort((a, b) => a - b).map(labelFor);

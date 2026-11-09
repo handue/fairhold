@@ -239,3 +239,19 @@ describe("rejection records", () => {
     for (const issue of issues) expect(text).toContain(issue.message);
   });
 });
+
+describe("excluded lots", () => {
+  it("reject a plan that both plans and rules out a lot", () => {
+    const intent = { ...GOLDEN_INTENT, excludedLotNumbers: [12] };
+    const check = checkPlan(intent, createGoldenState());
+    expect(check.issues.map((issue) => [issue.reason, issue.lotNumber])).toEqual([["excluded_and_planned", 12]]);
+    expect(check.issues[0]?.message).toBe('Lot 12 "Spa Day" is both in the plan and ruled out by the guest.');
+  });
+
+  it("are kept by the clamp, which drops the planned lot rather than the guest's exclusion", () => {
+    const clamped = clampPlan({ ...GOLDEN_INTENT, excludedLotNumbers: [12], backupLotNumbers: [9] }, createGoldenState());
+    expect(maxima(clamped.allocation)).toEqual({ 7: 50_000 });
+    expect(clamped.intent).toMatchObject({ excludedLotNumbers: [12], backupLotNumbers: [9] });
+    expect(clamped.adjustments.map((issue) => issue.reason)).toEqual(["excluded_and_planned"]);
+  });
+});

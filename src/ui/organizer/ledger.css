@@ -1,0 +1,128 @@
+/*
+ * 12's ledger on AG Grid's Quartz theme: what the Theming API has no param for, from the approved
+ * HTML (mockups/12-web-control-room.html), value for value. Everything else is LEDGER_THEME in LedgerGrid.tsx.
+ */
+
+/* The page's text rendering: Quartz asks for subpixel smoothing in its cells. */
+.ledger-grid,
+.ledger-grid .ag-cell {
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Headers: Geist Mono caps with a quiet separator on the column's edge, ink when sorted. */
+.ledger-grid .ag-header-cell-text {
+  letter-spacing: 0.08em;
+  overflow: visible;
+  text-overflow: clip;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ledger-grid .ag-header-cell-label,
+.ledger-grid .ag-header-cell-comp-wrapper {
+  overflow: visible;
+}
+/* A header wider than its column, as Glim's is, runs on to the right. */
+.ledger-grid .ag-header-cell:not(.ag-right-aligned-header) .ag-cell-label-container {
+  flex-direction: row;
+}
+.ledger-grid .ag-header-cell-sorted-desc,
+.ledger-grid .ag-header-cell-sorted-asc,
+.ledger-grid .ag-header-cell[aria-sort="descending"] .ag-header-cell-text,
+.ledger-grid .ag-header-cell[aria-sort="ascending"] .ag-header-cell-text {
+  color: var(--color-ink);
+}
+.ledger-grid .ag-sort-indicator-icon {
+  padding-left: 4px;
+}
+.ledger-grid .ag-right-aligned-header .ag-sort-indicator-icon {
+  padding-left: 0;
+  padding-right: 4px;
+}
+.ledger-grid .ag-header-cell-resize::after {
+  left: 4px;
+}
+.ledger-grid .ag-header-cell:last-child .ag-header-cell-resize::after {
+  display: none;
+}
+
+/* Cells: flex boxes that center their content, not line-height, which lands half a pixel higher. */
+.ledger-grid .ag-cell {
+  align-items: center;
+  color: var(--color-ink);
+  display: flex;
+  line-height: normal;
+}
+.ledger-grid .ag-right-aligned-cell {
+  justify-content: flex-end;
+}
+.ledger-grid .ledger-ell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ledger-grid .ledger-paddle {
+  color: var(--color-ink2);
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+}
+.ledger-grid .ledger-bidder {
+  font-weight: 500;
+}
+.ledger-grid .ledger-lots {
+  color: var(--color-ink2);
+}
+.ledger-grid .ledger-none {
+  color: var(--color-on-ink-muted);
+  font-size: 14px;
+}
+.ledger-grid .ledger-amount {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+}
+.ledger-grid .ledger-soft {
+  color: var(--color-ink2);
+}
+.ledger-grid .ledger-charge {
+  font-weight: 500;
+}
+.ledger-grid .ledger-status {
+  font-size: 13.5px;
+  gap: 10px;
+}
+
+/* A page's last row sits on the totals row's own top border. */
+.ledger-grid .ag-grid-scrolling-container .ag-row:last-child > .ag-grid-scrolling-cells {
+  border-bottom: 0;
+}
+
+/* The pinned totals row: 47px under its container's border, with no border of its own. */
+.ledger-grid .ag-row-pinned > .ag-grid-scrolling-cells {
+  border-bottom: 0;
+}
+.ledger-grid .ag-row-pinned .ag-cell {
+  height: 47px;
+}
+.ledger-grid .ag-row-pinned .ledger-paddle {
+  color: var(--color-muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ledger-grid .ag-row-pinned .ledger-lots {
+  color: var(--color-ink2);
+  font-size: 14px;
+  font-weight: 500;
+}
+.ledger-grid .ag-row-pinned .ledger-amount {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+/* Settlement status: rowClassRules (undrawn on Sheet C's design/24, so plain). */
+.ledger-grid .ledger-row-failed {
+  background: var(--color-surface);
+}
+.ledger-grid .ledger-row-charging .ledger-status {
+  font-weight: 500;
+}

@@ -70,12 +70,19 @@ interface ResolvedItems {
 /** Matches intent items to open lots; mode "repair" fixes or drops what "check" only reports. */
 function resolveItems(intent: PlanIntent, state: GlimState, mode: "check" | "repair"): ResolvedItems {
   const lotsByNumber = new Map(state.lots.map((lot) => [lot.number, lot]));
+  const excluded = new Set(intent.excludedLotNumbers ?? []);
   const seen = new Set<number>();
   const planLots: PlanLot[] = [];
   const issues: ValidationIssue[] = [];
 
   for (const item of intent.items) {
     const lot = lotsByNumber.get(item.lotNumber);
+    if (excluded.has(item.lotNumber)) {
+      // The guest's "not that one" wins: the repair drops the lot rather than the exclusion.
+      const label = lot ? lotLabel(lot) : `Lot ${item.lotNumber}`;
+      issues.push(issue("excluded_and_planned", `${label} is both in the plan and ruled out by the guest.`, { lot, lotNumber: item.lotNumber }));
+      continue;
+    }
     if (seen.has(item.lotNumber)) {
       const label = lot ? lotLabel(lot) : `Lot ${item.lotNumber}`;
       issues.push(issue("duplicate_lot", `${label} appears more than once.`, { lot, lotNumber: item.lotNumber }));
@@ -272,6 +279,8 @@ export function clampPlan(intent: PlanIntent, state: GlimState): ClampedPlan {
     tool: intent.tool,
     budgetCents,
     items: remaining.map((item) => ({ lotNumber: item.lot.number, priority: item.priority, capCents: item.capCents })),
+    ...(intent.backupLotNumbers ? { backupLotNumbers: intent.backupLotNumbers } : {}),
+    ...(intent.excludedLotNumbers ? { excludedLotNumbers: intent.excludedLotNumbers } : {}),
   };
   if (clamped.items.length === 0) return { intent: clamped, allocation: null, adjustments };
 

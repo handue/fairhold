@@ -1,30 +1,32 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cache, Suspense } from "react";
 
-import { getCatalogView } from "@/server/queries/catalog";
-import { DEFAULT_VIEWER_PADDLE, parseCategoryParam, parsePaddleParam } from "@/server/queries/request";
+import { getCatalogSeed } from "@/server/queries/catalog";
+import { parseCategoryParam, parsePaddleParam } from "@/server/queries/request";
 import type { LotCategory } from "@/server/queries/types";
+import { resolveViewer } from "@/server/queries/viewer";
 import { CatalogScreen } from "@/ui/catalog/CatalogScreen";
 import { GuestPageFallback } from "@/ui/GuestPageFallback";
+import { joinHref } from "@/ui/routes";
 
 type Props = PageProps<"/e/[slug]">;
 
 // One read per request, shared by the metadata and the page.
-const loadCatalog = cache((slug: string, paddleNumber: number, category: LotCategory | null) =>
-  getCatalogView({ slug, paddleNumber, category }),
+const loadCatalog = cache((slug: string, paddleNumber: number | null, category: LotCategory | null) =>
+  getCatalogSeed({ slug, paddleNumber, category }),
 );
 
 async function resolve({ params, searchParams }: Props) {
   const [{ slug }, query] = await Promise.all([params, searchParams]);
-  const paddle = parsePaddleParam(query.paddle);
-  const view = await loadCatalog(slug, paddle ?? DEFAULT_VIEWER_PADDLE, parseCategoryParam(query.category));
-  return { view, links: { slug, paddle } };
+  const viewer = await resolveViewer(slug, parsePaddleParam(query.paddle));
+  const seed = await loadCatalog(slug, viewer.paddleNumber, parseCategoryParam(query.category));
+  return { seed, viewer, links: { slug, paddle: viewer.linkPaddle } };
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
-  const { view } = await resolve(props);
-  return { title: view?.event.name ?? "Event not found" };
+  const { seed } = await resolve(props);
+  return { title: seed?.event.name ?? "Event not found" };
 }
 
 /** Screen 08: the lots of a live event. */
@@ -37,7 +39,8 @@ export default function LotsPage(props: Props) {
 }
 
 async function Catalog(props: Props) {
-  const { view, links } = await resolve(props);
-  if (!view) notFound();
-  return <CatalogScreen view={view} links={links} />;
+  const { seed, viewer, links } = await resolve(props);
+  if (!seed) notFound();
+  if (viewer.paddleNumber === null) redirect(joinHref(links.slug));
+  return <CatalogScreen seed={seed} links={links} />;
 }

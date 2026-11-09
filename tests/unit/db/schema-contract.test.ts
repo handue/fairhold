@@ -50,7 +50,8 @@ function latestSnapshot(): unknown {
 }
 
 describe("migrations", () => {
-  it("cover every change to schema.ts (run npm run db:generate after editing it)", async () => {
+  // drizzle-kit's diff takes about a second, and more than the default 5 s on a loaded machine.
+  it("cover every change to schema.ts (run npm run db:generate after editing it)", { timeout: 30_000 }, async () => {
     const { generateDrizzleJson, generateMigration } = await import("drizzle-kit/api");
     const pending = await generateMigration(
       latestSnapshot() as Parameters<typeof generateMigration>[0],
