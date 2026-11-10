@@ -8,6 +8,7 @@ import { RoleMenu } from "./demo/RoleMenu";
 import { SandboxMarker } from "./demo/SandboxMarker";
 import { formatClockTime, formatClosedTime, formatPaddleNumber, formatWeekdayTime } from "./format";
 import { Money } from "./Money";
+import { OutcomePill } from "./OutcomePill";
 import { PaddleMark } from "./PaddleMark";
 import { powerHref } from "./power/power-href";
 import { receiptHref } from "./receipt/receipt-href";
@@ -78,7 +79,17 @@ export function EventNav({ event, viewer, links, active, power }: EventNavProps)
         <div className="ml-auto flex items-center gap-12 max-lg:contents">
           {/* Below 1024 bidding power goes beside the tabs, and the paddle pill beside the name. */}
           <div className="contents max-lg:order-5 max-lg:ml-12 max-lg:flex max-lg:flex-none max-lg:items-center">
-            {power ?? <BiddingPowerPill viewer={viewer} href={powerHref(links)} />}
+            {power ?? (closed && viewer.heldCents !== null ? (
+              // After the close the hold is spoken for: say what it pays and releases, as 11 does.
+              <OutcomePill
+                settled={event.status === "settled"}
+                payCents={viewer.wonCents}
+                releaseCents={Math.max(0, viewer.heldCents - viewer.wonCents)}
+                href={receiptHref(links)}
+              />
+            ) : (
+              <BiddingPowerPill viewer={viewer} href={powerHref(links)} />
+            ))}
           </div>
           <div className={cn("contents", NAV_PILL)}>
             <PaddlePill viewer={viewer} slug={links.slug} />

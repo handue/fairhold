@@ -21,6 +21,8 @@ describe("getCatalogView on the approved fixture", () => {
       firstName: "Jamie",
       holdCents: 50_000,
       availableCents: 18_000,
+      heldCents: 50_000,
+      wonCents: 0,
       winningCount: 1,
       outbidCount: 1,
     });

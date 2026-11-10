@@ -6,7 +6,7 @@ import { riversideFixtureSource } from "@/ui/__fixtures__/riverside";
 import { buildCatalogView, getCatalogSeed } from "./catalog";
 import { foldStreamRows } from "./live-records";
 import { buildLotDetailView, getLotDetailSeed } from "./lot";
-import type { GuestReadSource } from "./types";
+import type { GuestReadSource, PaddleRecord } from "./types";
 
 const SLUG = "riverside-shelter-gala";
 const JAMIE = "paddle-142";
@@ -214,7 +214,8 @@ describe("foldStreamRows", () => {
     const hold = (paddleId: string, payload: object) => row({ type: "hold", paddleId, payload });
 
     it("takes the hold when it lands, through a raise, and drops it when it ends", async () => {
-      const seed = { ...(await catalogSeed()), paddle: { id: JAMIE, number: 142, firstName: "Jamie", holdCents: null, holdId: null } };
+      const paddle: PaddleRecord = { id: JAMIE, number: 142, firstName: "Jamie", holdCents: null, holdId: null };
+      const seed = { ...(await catalogSeed()), paddle };
 
       const held = foldStreamRows(seed, [hold(JAMIE, { holdId: "h1", status: "authorized", amountCents: 50_000 })]);
       expect(held.paddle).toMatchObject({ holdCents: 50_000, holdId: "h1" });
@@ -226,8 +227,12 @@ describe("foldStreamRows", () => {
       ]);
       expect(raised.paddle).toMatchObject({ holdCents: 70_000, holdId: "h2" });
 
+      expect(raised.paddle?.heldCents).toBe(70_000);
+
       const captured = foldStreamRows(raised, [hold(JAMIE, { holdId: "h2", status: "captured" })]);
       expect(captured.paddle?.holdCents).toBeNull();
+      // What was held stays, so the nav can say what the charge paid and released.
+      expect(captured.paddle?.heldCents).toBe(70_000);
     });
 
     it("keeps the hold in place when an approval is refused", async () => {

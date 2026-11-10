@@ -200,9 +200,10 @@ function applyHold(draft: Draft, row: StreamEventOf<"hold">): void {
   if (!paddle) return;
   const { holdId, status, amountCents } = row.payload;
   if (status === "authorized" && amountCents !== undefined) {
-    draft.paddle = { ...paddle, holdCents: amountCents, holdId };
+    draft.paddle = { ...paddle, holdCents: amountCents, holdId, heldCents: amountCents };
   } else if (status !== "authorized" && holdId === paddle.holdId) {
     // The hold in place ended (captured, voided, expired, or replaced, whose new hold came first).
-    draft.paddle = { ...paddle, holdCents: null, holdId: null };
+    // It stays what was held: after the charge the nav still says what was paid and released.
+    draft.paddle = { ...paddle, holdCents: null, holdId: null, heldCents: status === "replaced" ? null : (paddle.heldCents ?? paddle.holdCents) };
   }
 }
