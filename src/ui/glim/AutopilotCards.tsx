@@ -14,7 +14,7 @@ import { EventChip, EventFrame, HeldNote } from "./cards";
 import { ArrowUpRight, LockMark } from "./marks";
 
 /** 10's ghost button at 07's size. */
-const GHOST = "inline-flex h-36 cursor-pointer items-center gap-6 rounded-18 px-11 text-13.5 font-medium whitespace-nowrap text-ink disabled:cursor-default disabled:opacity-60";
+const GHOST = "inline-flex h-36 cursor-pointer items-center gap-6 rounded-18 px-11 text-13.5 font-medium whitespace-nowrap text-ink disabled:cursor-default disabled:opacity-60 max-md:h-44";
 
 /**
  * V2 (design/21 #5–#8): what Glim did on its own. Code wrote the trigger and "what" lines from the
@@ -53,7 +53,7 @@ function noticeLine(notice: HoldNotice): string {
   return notice.body ? `${title} ${notice.body}` : title;
 }
 
-const ENDED = "flex h-40 flex-1 items-center justify-center rounded-12 bg-surface text-13.5 font-semibold text-muted";
+const ENDED = "flex h-40 flex-1 items-center justify-center rounded-12 bg-surface text-13.5 font-semibold text-muted max-md:h-44";
 
 /**
  * V3 (design/21 #9, #10): the raise Glim prepared, only when the budget the guest named is above the
@@ -94,18 +94,24 @@ function OpenRaise({ card, slug, returnHref, busy, onDismiss }: Parameters<typeo
   const label = copy.buttonEnabled ? card.approveLabel : copy.button;
   return (
     <>
-      <div className="mt-12 flex gap-6">
+      {/* On a phone the two buttons stack, each the card's full width. */}
+      <div className="mt-12 flex gap-6 max-md:flex-col">
         <button
           type="button"
           disabled={!copy.buttonEnabled || busy}
           onClick={() => holdWindow.start(card.amountCents)}
-          className="flex h-40 flex-1 cursor-pointer items-center justify-center gap-6 rounded-12 bg-lime text-13.5 font-semibold text-ink disabled:cursor-default"
+          className="flex h-40 flex-1 cursor-pointer items-center justify-center gap-6 rounded-12 bg-lime text-13.5 font-semibold text-ink disabled:cursor-default max-md:h-44 max-md:flex-none"
         >
           {label}
           {copy.buttonEnabled && <ArrowUpRight />}
         </button>
         {idle && (
-          <button type="button" disabled={busy} onClick={() => onDismiss(card.actionId)} className={cn(GHOST, "h-40 rounded-12 px-12")}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onDismiss(card.actionId)}
+            className={cn(GHOST, "h-40 rounded-12 px-12 max-md:justify-center")}
+          >
             {card.dismissLabel}
           </button>
         )}

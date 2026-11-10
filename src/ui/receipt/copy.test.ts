@@ -4,7 +4,7 @@ import type { ReceiptGlimView, ReceiptLot } from "@/server/queries/receipt-view"
 
 import { keepLastWords } from "../paddle/text";
 import { listNote, projectorBubble, roomLabel, shortClock, trustLines } from "../projector/copy";
-import { bidByLine, bidByText, captionLines, charityLines, glimSay, receiptBubble, receiptDate, receiptFileName, receiptTitle } from "./copy";
+import { bidByLine, bidByText, captionLines, charityLines, glimSay, receiptBubble, receiptDate, receiptDateParts, receiptFileName, receiptTitle } from "./copy";
 
 const TZ = "America/Los_Angeles";
 const CLOSE = Date.parse("2026-11-08T05:30:00Z");
@@ -97,6 +97,7 @@ describe("receipt copy (design/25)", () => {
     ]);
     expect(receiptDate(CLOSE, TZ, "short")).toBe("Sat, November 7, 2026 · 9:30 PM");
     expect(receiptDate(CLOSE, TZ, "long")).toBe("Saturday, November 7, 2026 · 9:30 PM");
+    expect(receiptDateParts(CLOSE, TZ, "short")).toEqual(["Sat, November 7, 2026", "9:30 PM"]);
     expect(receiptFileName("1107-142")).toBe("fairhold-sandbox-receipt-1107-142");
   });
 

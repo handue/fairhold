@@ -12,7 +12,7 @@ export function GlimCornerBubble({ invitation, children }: { invitation: boolean
 /** The corner's orb: it opens the panel, and closes it again. */
 export function GlimCornerButton({ children }: { children: ReactNode }) {
   return (
-    <button type="button" onClick={toggleGlimPanel} aria-label="Chat with Glim" className="cursor-pointer rounded-full">
+    <button type="button" onClick={toggleGlimPanel} aria-label="Chat with Glim" className="cursor-pointer rounded-full max-md:size-56">
       {children}
     </button>
   );

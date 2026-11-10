@@ -6,7 +6,8 @@ import { cn } from "../cn";
 
 /**
  * 16's Copy chip (07's quick-reply chip): 32px, white, Line edge. It reads "Copied" for a moment
- * after copying, and "Copy failed" when the browser refuses the clipboard.
+ * after copying, and "Copy failed" when the browser refuses the clipboard. On a phone it is 40px,
+ * the smallest tap target.
  */
 export function CopyButton({ value, label, className }: { value: string; label: string; className?: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
@@ -32,7 +33,7 @@ export function CopyButton({ value, label, className }: { value: string; label: 
       onClick={copy}
       aria-label={label}
       className={cn(
-        "inline-flex h-32 flex-none cursor-pointer items-center rounded-16 border border-line bg-white px-12 text-12.5 font-medium whitespace-nowrap text-ink",
+        "inline-flex h-32 flex-none cursor-pointer items-center rounded-16 border border-line bg-white px-12 text-12.5 font-medium whitespace-nowrap text-ink max-md:h-40 max-md:rounded-20 max-md:px-14",
         className,
       )}
     >

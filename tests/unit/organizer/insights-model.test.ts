@@ -143,6 +143,31 @@ describe("Raised through the evening", () => {
     expect(chart.aria).toBe("Raised through the evening, from $0 at 7:00 PM to $8,160 at 9:30 PM");
   });
 
+  it("draws the same chart at its widget's width below 1440, the round times thinning with the room", () => {
+    const zone = "America/Los_Angeles";
+    expect(raisedChart(boardPoints, { opensAt, closesAt }, zone, 778)).toEqual(raisedChart(boardPoints, { opensAt, closesAt }, zone));
+
+    // A phone's widget: the plot keeps its 52 and 58 margins, and only the ends are named.
+    const phone = raisedChart(boardPoints, { opensAt, closesAt }, zone, 303);
+    expect(phone.right).toBe(245);
+    expect(phone.xLabels.map((label) => [label.text, Number(label.x.toFixed(1))])).toEqual([
+      ["7:00 PM", 52],
+      ["9:30 PM", 245],
+    ]);
+    expect(phone.end).toMatchObject({ x: 245, label: "$8,160" });
+    expect(phone.gridlines).toEqual(raisedChart(boardPoints, { opensAt, closesAt }, zone).gridlines);
+
+    // A tablet's: every hour; no label within 80 of an end.
+    const tablet = raisedChart(boardPoints, { opensAt, closesAt }, zone, 656);
+    expect(tablet.xLabels.map((label) => label.text)).toEqual(["7:00 PM", "8:00", "9:00", "9:30 PM"]);
+    for (const label of tablet.xLabels.slice(1, -1)) {
+      expect(label.x - 52).toBeGreaterThanOrEqual(80);
+      expect(tablet.right - label.x).toBeGreaterThanOrEqual(80);
+    }
+    // Never narrower than its floor.
+    expect(raisedChart(boardPoints, { opensAt, closesAt }, zone, 100).right).toBe(162);
+  });
+
   it("keeps the line under the svg's top for any evening's figure", () => {
     for (const max of [0, 1, 9_999, 75_000, 682_000, 816_000, 1_000_000, 12_345_678]) {
       const top = chartTop(max);

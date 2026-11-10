@@ -61,7 +61,7 @@ Run on `next dev`, the real tick, simulated payments and `GLIM_MODE=live`, by th
 
 | Screen | Against | Pixels over 48/255 | Where |
 | --- | --- | --- | --- |
-| 08, 05 | `docs/status/ui-08-lots.png`, `ui-05-lot-detail.png` | 0 (fidelity.spec passes) | |
+| 08, 05 | `docs/status/ui-08-lots.png`, `ui-05-lot-detail.png` | 1,075 and 4,149 (fidelity.spec passes); 0 against captures of HEAD | Those PNGs are Day 1's: the nav's design/27 links (both), and 05's "Let Glim bid on this lot" (was "Let the agent bid"). Measured Nov 9; earlier rows said 0 |
 | 09 | Day 2's `docs/status/ui-09-power.png` | 1,073 | All in the nav (design/27's links) |
 | 09 | `mockups/09-web-bidding-power.png` | 1,401 of 5,184,000 | The nav, plus Day 2's 326 corner pixels |
 | 12 | `mockups/12-web-control-room.png` | 3,290 of 5,184,000 | 2,964 in the nav, 326 in the corners |
@@ -326,13 +326,153 @@ The four states that looked wrong are fixed above.
 - So do `/paypal/start` and both window fonts.
 - Joining the seeded event answers 403 `event_view_only`.
 
+## On the hosted URL (Nov 9, 8:04 to 9:05 PM)
+
+After #3 and #4 merged, Render deployed main at a3b2c80 (live at 8:03 PM, once CI passed).
+
+- **A sweep without a hold** (headless Chrome, 15 steps, no console errors and no 5xx):
+  - Home has one button and no name field.
+  - 08 shows the guide, the Sandbox marker and the not-set band.
+  - Without a hold, 10 and 11 send the guest to 09.
+  - 09's window opens frame 1 ("Opening PayPal…") and lands on PayPal's sandbox with a token.
+  - Glim answers on live Claude in 3.5 s.
+  - The role menu has its seven items; 12, Insights and 14 load.
+  - Kai joins through 16b as paddle 189.
+  - A gone gala shows 16c.
+- **The whole path with a real sandbox hold** (the built-in browser; the user pressed the hold button, signed in to PayPal and pressed Charge, and the lead did the rest):
+  - **Frame 5:** the lead's press was blocked as a popup, and 09 showed "Continue to PayPal in this tab".
+  - **The hold:** the user's press opened the window, and $500 was authorized as buyer-1. The approved window closed by itself, and the nav read $500 / $500.
+  - **The plan:** after a $320 bid on Chef's Table and a heart on Wine Tasting, live Claude planned the golden $380 / $120 with the "On my own" block.
+  - **The autopilot:** at 8:12 PM the rival's $400 passed the limit. Glim moved the $380 left to Wine Tasting and bid $220, with its own why ("The chef's dinner is now beyond your budget…"). No tap.
+  - **The close:** Close bidding now at 8:13 PM. 11's date and its lots' "Won at" both read 8:13 PM.
+  - **The charge:** 12 read Ready to charge with all checks passed. Charge 21 winners settled at 9:04 PM: $310 captured on PayPal (7AD398548Y635810M) and $190 released. 11 reads paid.
+- **Found and fixed:** 10 showed "Finish in the PayPal window" with no raise open. The blocked first try's hold stayed `pending_approval`, and `readRaisePending` counted any pending hold while an authorized one existed. It now counts only one newer than the authorized hold (`src/server/queries/paddle.ts`), with a test that fails on the old query.
+- **Not a product fault:** while the built-in browser's pane was hidden, 12 sat on its server-rendered "Checking…" for over a minute. The page had not hydrated. Shown, it asked PayPal and passed in 1.1 s.
+- **The seeded event isn't on the hosted database** (`/e/riverside-shelter-gala` shows 16c): deploys run migrations only. Nothing links to it; the Devpost text should link the home page.
+- **Narrow windows:** every board is 1440×900 and the phone layout (SHOULD 8) was cut on Nov 7. Below about 1280 px wide the pages overlap and wrap, as the built-in browser's 504 px pane showed. Fixed by the responsive layouts (next section).
+
+## Responsive layouts (Nov 9 to 10)
+
+You brought SHOULD 8 back on Nov 9, as real responsive layouts and without new boards. Five tracks (shell, lots, glim, paddle, organizer) built them in parallel in this tree, and the integrator fitted them together. Two reviewers then went over the result on Nov 10, one at phone sizes and one at tablet and laptop sizes, and a fixer worked through their 26 findings (below). Every page now works from 320 to 1439 wide. At 1440 and up nothing changed: after the fixes, 24 page states captured at 1440×900 (native 2x) on this tree, and the open demo menu, differ by 0 pixels from the integrator's captures of HEAD on the same seeds and frozen clocks; the projector differs only in its join line's port and the QR code that carries it.
+
+### The rule and the breakpoints
+
+- **Only max-width variants.** `max-desk:` (below 1440, laptops), `max-xl:` (below 1280), `max-lg:` (below 1024, tablets), `max-md:` (below 768, phones), `max-sm:` (below 640). No unprefixed class changed. `src/ui/theme.css` adds `--breakpoint-desk: 90rem` and the type sizes 18, 24, 26, 32, 36, 40, 44 and 48 for phones.
+- **Widths checked:** 320, 375, 430, 768, 1024, 1280 and 1366 (`tests/e2e/support/responsive.ts`), plus 1440.
+- **Arbitrary `max-[Npx]:` variants sort before the theme's,** so they lose to `max-md:` on the same property. Only two are used, each on a property nothing else sets there: `max-[375px]` (the panel header's orb) and `max-[359px]` (12's title and tabs at 320). The review fixes add three stacked ones, each checked in the browser: `max-md:min-[360px]:` (the demo guide bar beside the orb), `max-desk:[@media(max-height:859px)]:` (the guide on a short laptop screen) and `lg:max-desk:[@media(max-height:599px)]:` (Glim's card in a short window).
+- **Text that must not split on a line** uses no-break spaces in one text node (`keepTogether` and `wrapAtSeparators` in `src/ui/format.ts`), not a nowrap `<span>`. A span mid-line moved the glyphs after it by a fraction of a pixel at 1440 (26 pixels over 48/255 on 16, 208 to 235 exact on 05); a no-break space draws exactly as a space, measured at 1440 native 2x.
+- **What CSS can't reach** (AG Grid's column widths) reads the width with `useMediaQuery` (`src/ui/useMediaQuery.ts`); it answers false on the server, so the desktop columns render first.
+
+### The design, page by page
+
+| Page | Phone (below 768) | Tablet (768 to 1023) | Laptop (1024 to 1439) |
+| --- | --- | --- | --- |
+| Navs (05, 08, 09, 10, 11, 12, 28) | Two rows, 119px: the paddle mark and gala name over the status pill and Sandbox marker, the paddle pill on the right; then 48px tabs with bidding power on the right. The pills go compact ("Closes 9:30 PM", "$180 / $500", the number alone), with labels kept for screen readers | Same two rows, 32px gutters | One row as drawn, the name truncating first. The gutter follows the pages' 1344 column (43px at 1366, 32 by 1344), so the paddle mark lines up with the content |
+| 16, 16b, 16c, not-found | One column. The home title scales to fit each sentence on a line, the button is full width above the fold; 16b's field and button are full width. The fine print wraps only after a "·" | One column | Two columns on home; the panel takes up to 544 |
+| 17, the PayPal window | Below 480 wide or 560 tall: one column, the button 48 tall and full width, the trust line at the foot | The popup (520×720) keeps its drawn layout | As drawn |
+| 18, the role menu and demo guide | The menu stays 16px inside the screen, items 44 tall; on a short screen (a phone held sideways) it scrolls inside. The guide is a 44px bar, "Demo guide · Step 1 of 5", that opens its steps upwards: beside Glim's orb, on its row, from 360 wide; above it at 320 | The bar in the card's corner | The bar below 1280, and below 1440 on a screen under 860 tall; the approved card from 1280 on a taller screen |
+| 08, the lots | One column of tiles; the tabs are a chip row that scrolls sideways; the band's call is full width | Two columns; title and total over the tabs | Three columns to 1279, four from 1280; 32px gutters. Three across, the ninth lot joins the first screen ("Show 15 more lots"), so it ends in a full row |
+| 05, a lot | One column: photo (3:2), thumbnails, title, bid card, history. The big amount is 40; chips 46 tall; Place bid 56; the Max field 16px | Two columns stay: a 340 card beside the photo, so Place bid is on the first screen | A 400 card below 1280, 468 above. Glim's corner closes the page under the history below 1440 |
+| 09, bidding power | Title 26; the chips stay four across at 48 tall; the Hold button comes right after the amount, then How the hold works with its steps stacked; Other… is 16px | The column at full width less 32px | The 880 column, with less room above it. Glim's corner closes the page under the trust line below 1440 |
+| 07, Glim's panel | A full-screen sheet that follows the visual viewport, so the input stays above the keyboard; 44px controls; chips scroll sideways; 16px input text. On a phone or a touch screen the input takes focus on open only for 05's "Bid on … up to $" | The floating card, 16px under the nav | The floating card, 16px under the nav; under 600 tall it runs from 16px above the bottom |
+| 10, My paddle | The band and rows stack; Glim's card under the rows, its controls two 44px halves | Glim's card under the rows | Desktop columns from 1280; below, the hold and Raise share a row over the bar |
+| 11, the receipt | One column: thank-you, the receipt, the lots. Download and Email full width; the amount 40. The receipt ends with Glim's note in the same words (the pickup note, or what comes next); the corner closes the page with the orb alone | The same, lots two across | Side by side; lots one column below 1280; Glim's bubble closes the page under the receipt |
+| 25b, the print page | The sheet scales to the screen (`FitSheet`); print is untouched, one US Letter page | Same | As drawn |
+| 14, the projector | The board flows down a scrolling dark page in reading order; total 56, clock 40, QR 96 | Upright tablets up to 1024 wide flow too, the Sandbox marker at the gutter | The scaled 1440×900 board, as before |
+| 12, the control room | The rail first (actions full width, 48 tall), then the ledger; the grid scrolls inside its frame with Paddle pinned, Lots won 152 wide | The rail as a two-column card over the ledger, which shows every column | The same below 1280, so at 1024 the ledger is 960 wide and Status shows; from 1280 the 416 rail beside the ledger. Below 1440 Bidder is 108 (from 100) |
+| 28, Insights | One column; the chart redraws at its width; Top lots scrolls inside its widget with Lot pinned | Figures 2 by 2, chart and Top lots full width; Top lots' number columns narrow so Title gets 230 | Below 1280 as on a tablet, Top lots at its desktop columns; from 1280 the drawn grid |
+
+### Decisions
+
+- **The tracks':** a two-row nav instead of a menu button, so every link stays one tap away; navs not sticky; no `viewport-fit=cover` (Next already sends `width=device-width, initial-scale=1`, and pinch zoom stays); the full-screen Glim sheet only on phones; 05 keeps two columns on a tablet so Place bid stays on the first screen; the receipt before the lots on narrow screens; the projector flows rather than shrinking to 4 to 7px type.
+- **Integration:**
+  - **Glim's corner against the primary actions.** Below 1024 the invitation ("Want me to bid for you?") leaves the orb on its own (`OrbBubble.phone: "none"`): 08's band, 05's "Let Glim bid on this lot" and 10's "Talk to Glim" make the same offer in the page. 09's hint keeps only its question on a phone (`phone: "title"`).
+  - **05, 09 and 11 below 1440:** the corner closes the page instead of floating (`CornerOrb placement="page-end"`), as the organizer's already did. On a laptop's first screen it covered 05's "Raise bidding power" and "Let Glim bid on this lot", 09's Hold button (at 1024×768, with no way to scroll it clear) and 11's Download receipt and Email me a copy. At 1440 all are the approved corner.
+  - **Room at the end:** 08 leaves 128 to 144px below 1440 (104 on a phone), so its last lots scroll clear of the guide and Glim's bubble.
+  - **09's "Continue in this tab"** is a 44px target on a phone, its extra height taken back by margins.
+  - **05's Place bid stays below the fold at 375×812** (about 20px). Getting it above would take some 160px, and the photo, the thumbnails or the nav would have to go.
+- **The review's** (Nov 10), where they reverse an earlier call:
+  - **09's Hold button before the explainer on a phone.** The tracks kept the approved order; at 375×812 the button was 113px below the first screen and at 320×568 two screens down, behind a covered card. It now follows the amount, and How the hold works follows it as reading.
+  - **The demo guide's card from 1280,** not 1024: at 1024×768 and 1180×820 the card (575 wide) and Glim's bubble hid the whole second row of lots.
+  - **Still no `viewport-fit=cover`.** The review found that every `env(safe-area-inset-*)` resolves to 0 without it. Adding it would need side insets on every gutter for landscape phones, so the comments and `src/ui/README.md` now say the terms are 0 instead.
+  - **The demo menu stays non-modal.** Radix's modal mode did not stop the closing tap from opening what was under it in Chrome's touch emulation (it closes on pointerdown, so the click still lands). Instead, a tap or click outside the open menu only closes it (`useDismissOnlyClick` in `RoleMenu`), with a mouse too.
+
+### The review (Nov 10) and its fixes
+
+Phone reviewer: 320×568, 375×812 and 430×932, landscape 568×320 to 844×390, touch and a Pixel user agent. Tablet and laptop reviewer: 768 to 1366, real browser viewports 1024×700, 1280×689 and 1366×657, and iPads. Neither found a change at 1440. All 26 findings held up and were fixed; none was skipped.
+
+| # | Finding | Fix |
+| --- | --- | --- |
+| 1 | 05's Max field (14px) and 09's Other… (15px) make iOS zoom in on focus | `max-md:text-16` on both |
+| 2 | The demo menu runs off a phone held sideways: Reset demo unreachable at 667×375, two more items at 568×320 | Below 1440 the menu and the invite card take Radix's available height and scroll inside (`overscroll-contain`). At 1440 the open menu is pixel-identical to before |
+| 3 | 09's Hold button a screen or more below the fold on a phone | The explainers take `max-md:order-1`: the button ends at y 435 at 375×812 and 479 at 320×568 |
+| 4 | The guide bar sat 88px up on every phone, over the chips at 320 | From 360 wide it sits beside the orb, centred on its row; at 320 it stays above |
+| 5 | Times split from AM/PM (10 at 430, 11 at 320) | The time in no-break spaces (`keepTogether`; `receiptDateParts` for 11) |
+| 6 | " · " lines wrapping inside a name or with a leading dot (05's donor line, 16, 16c and not-found's fine print) | They wrap only after a separator, each part whole and the dot with the part before (`wrapAtSeparators`; 05's line no longer balanced) |
+| 7 | Single words alone: 07's status ("…held with / PayPal"), 09's raise lede ("not / a charge.") | `max-md:text-balance` on 07's status; 09's lede puts each sentence on its own line on a phone |
+| 8 | The sheet focuses its input on open, so Android raises the keyboard over the greeting | On a phone or a touch screen the input takes focus only for 05's prefill, which waits for an amount |
+| 9 | The safe-area insets do nothing (no `viewport-fit=cover`) | Kept no cover (see Decisions); the comments and README corrected. `src/app/layout.tsx` unchanged |
+| 10 | 11's pickup note pushed past every lot on a phone | Below 1024 the receipt card ends with the same words (`ReceiptNote`), and the corner shows the orb alone |
+| 11 | The ledger's Bidder and Lots won and Top lots' Title cut short on a phone | Phone widths: Lots won 152, Bidder 108 below 1440; Top lots below 1024: Lot 56, Title at least 170, Estimated value 104 with its header on two lines, Bids 64, Paddle 80, Glim 64. 1440's columns are unchanged |
+| 12 | The tap that closes the demo menu also opened the lot under it (on HEAD too) | That tap or click only closes the menu |
+| 13 | 09's bubble on the Hold button at 1024×768, for good | The corner closes the page below 1440; the 120px end padding below 1024 went |
+| 14 | 05's bubble and orb on "Raise bidding power" and "Let Glim bid on this lot" on laptops | The same, below 1440 (it was phones only); the 128 and 112px end padding went |
+| 15 | The docked guide and Glim's bubble hide 08's second row on a landscape iPad | The bar below 1280, and on screens under 860 tall below 1440 |
+| 16 | Glim's card reaches y 16 on a laptop, over the nav, bidding power and the paddle pill | Below 1440 it stops 16px under the nav: `max-h` 100dvh−196 from 1024, 100dvh−247 below (the two-row nav), 100dvh−100 in a short window from 1024 |
+| 17 | 12's ledger beside the 360 rail at 1024 cut off Status (Failed, Retry) | The rail stands above the full-width ledger below 1280; the ledger's heading row stays one line from 1024. 28's chart and Top lots take the full width below 1280 too |
+| 18 | 05's donation line at 768 split "Estimated value / $600" | As 6 |
+| 19 | 05's max line left "$420." alone at 1024 to 1279 | "up to $420." in no-break spaces |
+| 20 | The invitation bubble on the lots and 10's rows of an upright tablet | Hidden below 1024, as on a phone |
+| 21 | 14 on a tablet: the Sandbox marker 12px in from the gutter, "PayPal." alone | No margin on the marker in the flowed layout; the trust line balanced |
+| 22 | 14 at 1024×1366 got the scaled board with 7.5px labels | The flow takes upright screens up to and including 1024 wide |
+| 23 | At 1366 the paddle mark (x 32) and the content (x 43) don't line up | The navs' gutter is `max(32px, 50% − 640px)` below 1440 |
+| 24 | 09's captions at 768 broke "All / $500" | `text-pretty` instead of `text-balance` there |
+| 25 | Top lots at 768: Title at its 128 minimum, about ten characters | As 11; Title gets 230 at 768, and every column shows |
+| 26 | 08 at 1024 to 1279: the first eight lots end in a row of two | The ninth lot joins them there (`CatalogGrid`'s `rowFiller`), and the button counts 15 |
+
+The tablet reviewer also noted that `src/server/paypal/window-page.ts` gained a media query in this work: it is in the page's template only (the one-column layout of design/17 on a phone).
+
+### Checks
+
+- **Unit and build:** typecheck, lint and `rm -rf .next && npm run build` pass. `npx vitest run`: 165 files, 1,578 tests (two new, for `keepTogether` and `wrapAtSeparators`; `receiptDateParts` joins an existing one).
+- **Responsive specs** (`tests/e2e/responsive-*.spec.ts`, every width, no sideways overflow, no clipped text, thumb-sized primary actions at 375):
+
+  | Spec | Tests | Server |
+  | --- | --- | --- |
+  | responsive-shell | 7 | live |
+  | responsive-lots | 18 | live |
+  | responsive-glim | 9 | live |
+  | responsive-organizer | 3 | live |
+  | responsive-fix (new: each review fix, at the widths it was found at) | 11 | live |
+  | responsive-paddle | 8 + 9 | the paddle moment, then the closed moment (frozen) |
+
+  48 of 48 on the live server at 2 workers, then 8 and 9 (17 skipped for the other moment). The fixes changed what three specs expected: responsive-glim (05 and 09 close the page below 1440; the invitation and 11's bubble hidden below 1024; a page shorter than the screen), responsive-shell (the guide is the bar at every width in WIDTHS; the nav lines up with the content from 1024) and responsive-organizer (the ledger pins only on a phone; the rail above it below 1280; Top lots pins only on a phone).
+- **golden-path-phone.spec.ts and golden-path.spec.ts** on the real tick, on a fresh database: 2 of 2 in 1.7 minutes.
+- **The 1440 specs:** fidelity, guest-pages, lot-drawings and healthz 35 of 35; glim-fidelity 1 of 1 and power-fidelity 1 of 1 (run one after the other: power-fidelity takes Jamie's hold away, which glim-fidelity needs); paddle-receipt-projector 3 of 3; control-room- and insights-fidelity 2 of 2. The live group on a fresh database: 70 passed, 1 skipped (the sandbox buyer card).
+- **Fidelity numbers** (unchanged): 08 1,075 and 05 4,149 against the Day 1 PNGs, 0 against the integrator's captures; 09 1,073 (Day 2) and 1,401 (mockups/09); 12 3,290 (2,964 in the nav, 326 in the corners); 28 57,787; 07's nine part captures 0 from the glim track's pre-change captures; 10 0 and 14 differing only in the port, against the paddle track's.
+- **The 1440 A/B** against the integrator's HEAD captures, same seeds and frozen clocks: 13 catalog-moment states (16, 16b, 16c, not-found, 05 for lots 03 and 07 and the missing lot 99, 08 and 08 filtered, 10, 09, the PayPal window's start and cancel pages) and 11 closed-moment states (16b, 05, 08, 10, 09, 12, 28, 11 for 119, 142 and the never-held 302, 25b), 0 pixels each; the open demo menu 0 pixels inside the menu; 14 only in its join line and QR.
+- **The sweep:** every page state at 320, 375, 430, 768, 1024, 1280, 1366 and 1440, run again after the fixes (532 captures, then the touched scenarios again): no overflow, no clipped text, no console errors on a warm server. Script: the integrator's scratchpad `responsive/sweep/sweep.mjs`; the fixer's captures are in the scratchpad's `responsive/fix/sweep/`.
+
+### Still imperfect
+
+- **Phones:**
+  - The two-row nav is 119px, about 15% of an 812 screen; on a demo gala at 320 the Sandbox marker wraps under the status pill (143px).
+  - 05's Place bid sits about 20px below the fold at 375×812.
+  - The orb floats over 08's and 10's rows while scrolling, as any fixed element does; each page leaves room so its end scrolls clear. The guide bar does the same at the bottom left.
+  - The open demo guide covers the lots until it is closed.
+  - 25b is a 0.42× preview, readable only zoomed, and shows unscaled for a moment before hydration.
+  - At 320, long projector titles wrap to three or four lines; the panel header hides its orb and wraps the status, which balances as "Not bidding yet · $500 / held with PayPal".
+  - The page behind Glim's sheet is not scroll-locked; the iOS keyboard path is in code but not tried on a device.
+  - The safe-area terms are 0 (no `viewport-fit=cover`); on an iPhone with Safari's toolbar collapsed the 56px orb's lower 18px reach into the home indicator's zone.
+  - The ledger and Top lots still scroll sideways on a phone; Status and the money columns are a swipe away.
+- **Tablets:** home leaves space right of its 544 panel; the 400px Glim card covers about half the page at 768; 28's black Limits kept card is tall and mostly empty beside Hold utilization.
+- **Laptops:** at 1280×800 the guide bar still sits on the first price of 08's second row, and Glim's bubble on the last lot's title, on the first screen; at 1366 the fixed guide and orb keep 32px from the window's edge while the content is 43px in; 11's single-column lot tiles are large below 1280.
+- **Landscape phones** at 768 wide and up (812×375) get the floating Glim card, which covers the nav there, and the scaled projector board.
+- **Not tried:** Safari and real devices. The layouts use `text-wrap: balance` and `pretty`, and 11 uses `display: contents` on `main` below 1024.
+
 ## Known gaps
 
-- **Not run yet:**
-  - The hosted URL since these boards.
-  - A real sandbox window through the new frames.
-  - Safari.
-  - The autopilot beat on the hosted URL.
+- **Not run yet:** Safari, and the autopilot beat in a normal desktop Chrome window at full width.
 - **The approved window closes after 3 s, and it is reused by name.** A second hold pressed within those 3 s can have that close land on its start, and 09 then shows frame 5 ("Continue to PayPal in this tab"). Only a press within seconds of an approval meets it. hold.spec now waits it out.
 - **A director backlog delays the rivals.** Demos started on a server with `ENGINE_ENABLED=false` keep their queued director jobs. When an engine-on server later reads the same database, it works through hundreds of overdue jobs first, and the rivals came 60 s late. Use a fresh database for the real-tick spec.
 - **The nav and a refusal can show different figures (Day 2 #20).** With the autopilot's limits, 05 reads "You have $0 left of $500" while the nav reads $190 / $500, because the refusal reserves Glim's limits.
@@ -343,6 +483,9 @@ The four states that looked wrong are fixed above.
 - **`/api/demo` still takes `firstName`.** The home form sends none, and the API keeps it for the specs.
 - **E2E:**
   - Specs are not in CI.
+  - On a long-lived database with `ENGINE_ENABLED=false`, demo lots past their close stay open, and the engine closes overdue lots 200 at a time. Once over 200 are due, the creator's Close next lot answers "24 lots are still open" and entry.spec's role menu test fails (on HEAD too). A fresh database passes.
+  - hold.spec's "flips the nav in another tab" can miss its 5 s when three copies run at once (on HEAD too). It passes alone and in the full file at 2 workers.
+  - Several dev servers at once can use up Postgres's connections, and the integration tests then fail with "too many clients". Stop them before `npx vitest run`.
   - Delete the dev server's build folder before each `next dev`.
   - `next dev` adds its `NEXT_DIST_DIR` to `tsconfig.json`'s include list. Take those lines out before committing.
 - **Small leftovers:**
@@ -374,13 +517,19 @@ FREEZE_CLOCK_AT=2026-11-08T04:58:00.000Z npx next dev -p 3456
 FREEZE_CLOCK_AT=2026-11-08T04:58:00.000Z PLAYWRIGHT_BASE_URL=http://localhost:3456 npx playwright test \
   tests/e2e/fidelity.spec.ts tests/e2e/guest-pages.spec.ts tests/e2e/lot-drawings.spec.ts tests/e2e/healthz.spec.ts
 # glim-fidelity and power-fidelity need today's seed (no --date), its FREEZE_CLOCK_AT, and the server's
-# SESSION_SECRET in the spec's environment; power-fidelity mutates the fixture, so reseed afterwards.
+# SESSION_SECRET in the spec's environment; power-fidelity mutates the fixture (it takes away the hold
+# glim-fidelity needs), so run glim-fidelity first or alone, and reseed afterwards.
 # paddle-receipt-projector: --moment=paddle --date=2026-11-07. control-room- and insights-fidelity: --moment=closed.
 
-# The whole path on the real tick, on a fresh database
+# Below 1440: on the live server; responsive-paddle on its own seeded moments (see its header)
+DATABASE_URL=<the server's> PLAYWRIGHT_BASE_URL=http://localhost:3456 npx playwright test \
+  tests/e2e/responsive-shell.spec.ts tests/e2e/responsive-lots.spec.ts tests/e2e/responsive-glim.spec.ts \
+  tests/e2e/responsive-organizer.spec.ts tests/e2e/responsive-fix.spec.ts
+
+# The whole path on the real tick, on a fresh database, at 1440 and on a phone
 ENGINE_ENABLED=true npx next dev -p 3456
 ENGINE_ENABLED=true PLAYWRIGHT_BASE_URL=http://localhost:3456 GOLDEN_PATH_SHOTS=/tmp/golden \
-  npx playwright test tests/e2e/golden-path.spec.ts
+  npx playwright test tests/e2e/golden-path.spec.ts tests/e2e/golden-path-phone.spec.ts
 # The same with live Claude: start the server with GLIM_MODE=live and ANTHROPIC_API_KEY from .env.local.
 ```
 

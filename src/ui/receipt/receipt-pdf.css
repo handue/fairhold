@@ -362,6 +362,22 @@
   color: var(--color-ink2);
 }
 
+/*
+ * A screen narrower than the sheet and its stage's padding (a phone, a small tablet) shows the
+ * whole sheet scaled to fit: FitSheet sets --fit. The box keeps the sheet's proportions before it does.
+ */
+@media screen and (width < 848px) {
+  .fh-pdf-fit {
+    width: 100%;
+    aspect-ratio: 816 / 1056;
+    overflow: hidden;
+  }
+  .fh-pdf-fit > .fh-pdf {
+    transform: scale(var(--fit, 1));
+    transform-origin: 0 0;
+  }
+}
+
 @page {
   size: letter;
   margin: 0;

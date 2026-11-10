@@ -9,8 +9,12 @@ import { ArrowRightIcon } from "../icons";
  */
 export function NotSetBand({ href }: { href: string }) {
   return (
-    <section aria-label="Bidding power not set" className="flex h-64 items-center rounded-24 bg-ink px-8 text-white">
-      <div className="flex items-center gap-14">
+    // On a phone the call drops under the words and takes the band's width.
+    <section
+      aria-label="Bidding power not set"
+      className="flex h-64 items-center rounded-24 bg-ink px-8 text-white max-md:h-auto max-md:flex-col max-md:items-stretch max-md:gap-16 max-md:py-8"
+    >
+      <div className="flex items-center gap-14 max-md:pr-8">
         <span className="flex size-48 flex-none items-center justify-center rounded-full bg-white/8">
           {/* The paddle in its brand colors, with a white handle so it reads on ink. Never rotated. */}
           <svg width={20} height={20} viewBox="0 0 24 24" aria-hidden="true">
@@ -19,19 +23,19 @@ export function NotSetBand({ href }: { href: string }) {
           </svg>
         </span>
         <div>
-          <p className="text-15 leading-20 font-semibold">Set your bidding power to start bidding</p>
-          <p className="text-13 leading-18 text-on-ink-muted">It’s a hold with PayPal, not a charge.</p>
+          <p className="text-15 leading-20 font-semibold max-md:text-balance">Set your bidding power to start bidding</p>
+          <p className="text-13 leading-18 text-on-ink-muted max-md:text-balance">It’s a hold with PayPal, not a charge.</p>
         </div>
       </div>
 
-      <div className="ml-auto flex items-center gap-12">
+      <div className="ml-auto flex items-center gap-12 max-md:ml-0">
         <Link
           href={href}
           className={buttonClass({
             variant: "lime",
             size: 48,
             padding: "pr-18 pl-20",
-            className: "focus-visible:outline-lime",
+            className: "focus-visible:outline-lime max-md:flex-1 max-md:justify-between",
           })}
         >
           Set bidding power

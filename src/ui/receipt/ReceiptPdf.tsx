@@ -13,6 +13,7 @@ import type { GuestLinks } from "../routes";
 
 import { bidByText, captionLines, charityLines, receiptDate, receiptFileName } from "./copy";
 import { DownloadPdfButton } from "./DownloadPdfButton";
+import { FitSheet } from "./FitSheet";
 import { receiptHref } from "./receipt-href";
 import "./receipt-pdf.css";
 
@@ -46,167 +47,169 @@ export function ReceiptPdfPage({ view, links }: { view: ReceiptView; links: Gues
 
   return (
     <div className="fh-pdf-stage">
-      <div className="fh-pdf-controls mb-24 flex w-816 items-center justify-between">
-        <Link href={receiptHref(links)} className="text-14 font-medium text-ink2">
+      <div className="fh-pdf-controls mb-24 flex w-816 max-w-full items-center justify-between max-md:mb-16 max-md:flex-wrap max-md:gap-x-16 max-md:gap-y-8">
+        <Link href={receiptHref(links)} className="text-14 font-medium text-ink2 max-md:inline-flex max-md:min-h-44 max-md:items-center">
           Back to your receipt
         </Link>
         <DownloadPdfButton fileName={receiptFileName(receipt.number)} />
       </div>
 
-      <div className="fh-pdf" role="img" aria-label="Receipt PDF, marked Sandbox demo, not a tax document">
-        <div className="bandp top mono">
-          <span>Sandbox demo · not a tax document</span>
-          <span className="soft">No real money moved</span>
-        </div>
-
-        <div className="sheetp">
-          <div className="phead">
-            <div className="brand">
-              <PaddleMark tone="brand" size={24} />
-              {view.event.name}
-            </div>
-            <span className="eyebrow mono rid">Sandbox receipt {receipt.number}</span>
+      <FitSheet>
+        <div className="fh-pdf" role="img" aria-label="Receipt PDF, marked Sandbox demo, not a tax document">
+          <div className="bandp top mono">
+            <span>Sandbox demo · not a tax document</span>
+            <span className="soft">No real money moved</span>
           </div>
-          <p className="eyebrow mono pmeta">
-            <span>{receiptDate(view.event.closesAt, tz, "long")}</span>
-            <span>
-              Paddle {formatPaddleNumber(view.viewer.paddleNumber)} · {view.viewer.firstName}
-            </span>
-          </p>
-          <p className="thanks">Thank you, {view.viewer.firstName}.</p>
-          <p className="lede">
-            <HeartLineIcon size={15} className="text-muted" />
-            Your winning bids support {view.event.charityName}.
-          </p>
 
-          <div className="money">
-            {view.hold && (
-              <div className="hold">
-                <span className="lock">
-                  <LockIcon size={18} />
-                </span>
-                <div>
-                  <b>
-                    {formatUsd(view.hold.cents)} held with PayPal{holdAt}
-                  </b>
-                  <span className="sub">{view.glim ? "Your bids and Glim’s stayed within it." : "Your bids stayed within it."}</span>
-                </div>
+          <div className="sheetp">
+            <div className="phead">
+              <div className="brand">
+                <PaddleMark tone="brand" size={24} />
+                {view.event.name}
               </div>
-            )}
-            <div className="fig hero">
-              <span className="big">
-                <b className="mono">
-                  <Amount cents={view.payCents} />
-                </b>
-                paid with PayPal
-              </span>
-              <span className="sm">
-                <b className="mono">
-                  <Amount cents={view.releaseCents} />
-                </b>
-                released
-              </span>
+              <span className="eyebrow mono rid">Sandbox receipt {receipt.number}</span>
             </div>
-            <div className="bar" aria-hidden="true">
-              {view.payCents > 0 && <i className="k" style={{ flex: `${view.payCents} 1 0` }} />}
-              {view.releaseCents > 0 && <i className="g" style={{ flex: `${view.releaseCents} 1 0` }} />}
-            </div>
-            <p className="cap">
-              <span>{capFirst}</span>
-              <span>{capSecond}</span>
+            <p className="eyebrow mono pmeta">
+              <span>{receiptDate(view.event.closesAt, tz, "long")}</span>
+              <span>
+                Paddle {formatPaddleNumber(view.viewer.paddleNumber)} · {view.viewer.firstName}
+              </span>
             </p>
-            <p className="note">Some banks take a few days to remove a released hold.</p>
-          </div>
+            <p className="thanks">Thank you, {view.viewer.firstName}.</p>
+            <p className="lede">
+              <HeartLineIcon size={15} className="text-muted" />
+              Your winning bids support {view.event.charityName}.
+            </p>
 
-          <div className="items">
-            <div className="ir ih mono">
-              <span>Lot</span>
-              <span className="n">Paid</span>
-              <span className="n">Estimated value</span>
-              <span className="n">Tax-deductible</span>
-            </div>
-            {view.won.map((lot) => {
-              const by = bidByText(lot);
-              const won = lot.closedAt === null ? null : `Won at ${lotClockTime(lot.closedAt, tz)}`;
-              return (
-                <div key={lot.lotId} className="ir it">
+            <div className="money">
+              {view.hold && (
+                <div className="hold">
+                  <span className="lock">
+                    <LockIcon size={18} />
+                  </span>
                   <div>
                     <b>
-                      Lot {formatLotNumber(lot.number)} · {lot.title}
+                      {formatUsd(view.hold.cents)} held with PayPal{holdAt}
                     </b>
-                    <small>{[won, by].filter(Boolean).join(" · ")}</small>
+                    <span className="sub">{view.glim ? "Your bids and Glim’s stayed within it." : "Your bids stayed within it."}</span>
                   </div>
-                  <span className="n p mono">
-                    <Amount cents={lot.paidCents} />
-                  </span>
-                  <span className="n e mono">{lot.estimatedValueCents === null ? "Not set" : <Amount cents={lot.estimatedValueCents} />}</span>
-                  <span className="n mono">
-                    <Amount cents={lot.deductibleCents} />
-                  </span>
                 </div>
-              );
-            })}
-            <div className="ir itot">
-              <span className="t mono">Total</span>
-              <span className="n mono">
-                <Amount cents={view.payCents} />
-              </span>
-              <span />
-              <span className="n mono">
-                <Amount cents={view.deductibleCents} />
-              </span>
-            </div>
-          </div>
-          {notWon.map((lot) => (
-            <p key={lot.lotId} className="notwon">
-              Lot {formatLotNumber(lot.number)}, {lot.title}: not won, never charged.
-            </p>
-          ))}
-
-          <div className="two">
-            <div>
-              <div className="fig">
+              )}
+              <div className="fig hero">
+                <span className="big">
+                  <b className="mono">
+                    <Amount cents={view.payCents} />
+                  </b>
+                  paid with PayPal
+                </span>
                 <span className="sm">
                   <b className="mono">
-                    <Amount cents={view.deductibleCents} />
+                    <Amount cents={view.releaseCents} />
                   </b>
-                  tax-deductible
+                  released
                 </span>
               </div>
-              <p className="why">Only what you pay above an item’s estimated value is tax-deductible.</p>
-              <p className="disc">
-                <span>{charityFirst}</span>
-                {charitySecond && <span>{charitySecond}</span>}
+              <div className="bar" aria-hidden="true">
+                {view.payCents > 0 && <i className="k" style={{ flex: `${view.payCents} 1 0` }} />}
+                {view.releaseCents > 0 && <i className="g" style={{ flex: `${view.releaseCents} 1 0` }} />}
+              </div>
+              <p className="cap">
+                <span>{capFirst}</span>
+                <span>{capSecond}</span>
               </p>
+              <p className="note">Some banks take a few days to remove a released hold.</p>
             </div>
-            <div>
-              <p className="det">
-                <span>PayPal transaction ID</span>
-                <span className="mono">{paypalIdOrNull(receipt.captureId) ?? "Simulated"}</span>
+
+            <div className="items">
+              <div className="ir ih mono">
+                <span>Lot</span>
+                <span className="n">Paid</span>
+                <span className="n">Estimated value</span>
+                <span className="n">Tax-deductible</span>
+              </div>
+              {view.won.map((lot) => {
+                const by = bidByText(lot);
+                const won = lot.closedAt === null ? null : `Won at ${lotClockTime(lot.closedAt, tz)}`;
+                return (
+                  <div key={lot.lotId} className="ir it">
+                    <div>
+                      <b>
+                        Lot {formatLotNumber(lot.number)} · {lot.title}
+                      </b>
+                      <small>{[won, by].filter(Boolean).join(" · ")}</small>
+                    </div>
+                    <span className="n p mono">
+                      <Amount cents={lot.paidCents} />
+                    </span>
+                    <span className="n e mono">{lot.estimatedValueCents === null ? "Not set" : <Amount cents={lot.estimatedValueCents} />}</span>
+                    <span className="n mono">
+                      <Amount cents={lot.deductibleCents} />
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="ir itot">
+                <span className="t mono">Total</span>
+                <span className="n mono">
+                  <Amount cents={view.payCents} />
+                </span>
+                <span />
+                <span className="n mono">
+                  <Amount cents={view.deductibleCents} />
+                </span>
+              </div>
+            </div>
+            {notWon.map((lot) => (
+              <p key={lot.lotId} className="notwon">
+                Lot {formatLotNumber(lot.number)}, {lot.title}: not won, never charged.
               </p>
-              {view.event.statementLabel && (
-                <p className="det">
-                  <span>On your statement</span>
-                  <span className="mono">{view.event.statementLabel}</span>
+            ))}
+
+            <div className="two">
+              <div>
+                <div className="fig">
+                  <span className="sm">
+                    <b className="mono">
+                      <Amount cents={view.deductibleCents} />
+                    </b>
+                    tax-deductible
+                  </span>
+                </div>
+                <p className="why">Only what you pay above an item’s estimated value is tax-deductible.</p>
+                <p className="disc">
+                  <span>{charityFirst}</span>
+                  {charitySecond && <span>{charitySecond}</span>}
                 </p>
-              )}
-              {view.event.pickupNote && <p className="pick">{view.event.pickupNote}</p>}
+              </div>
+              <div>
+                <p className="det">
+                  <span>PayPal transaction ID</span>
+                  <span className="mono">{paypalIdOrNull(receipt.captureId) ?? "Simulated"}</span>
+                </p>
+                {view.event.statementLabel && (
+                  <p className="det">
+                    <span>On your statement</span>
+                    <span className="mono">{view.event.statementLabel}</span>
+                  </p>
+                )}
+                {view.event.pickupNote && <p className="pick">{view.event.pickupNote}</p>}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="wm mono" aria-hidden="true">
-          {Array.from({ length: WATERMARK_LINES }, (_, index) => (
-            <span key={index} className="mono">
-              SANDBOX DEMO
-            </span>
-          ))}
+          <div className="wm mono" aria-hidden="true">
+            {Array.from({ length: WATERMARK_LINES }, (_, index) => (
+              <span key={index} className="mono">
+                SANDBOX DEMO
+              </span>
+            ))}
+          </div>
+          <div className="bandp bot mono">
+            <span>Sandbox demo · not a tax document</span>
+            <span className="soft">Page 1 of 1</span>
+          </div>
         </div>
-        <div className="bandp bot mono">
-          <span>Sandbox demo · not a tax document</span>
-          <span className="soft">Page 1 of 1</span>
-        </div>
-      </div>
+      </FitSheet>
     </div>
   );
 }

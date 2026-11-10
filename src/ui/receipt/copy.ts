@@ -134,15 +134,21 @@ export function charityLines(event: Pick<ReceiptView["event"], "charityName" | "
 
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
 
-/** "Sat, November 7, 2026 · 9:30 PM" (11), or with the weekday in full (25b). */
-export function receiptDate(at: number, timeZone: string, weekday: "short" | "long"): string {
+/** receiptDate's two parts, "Sat, November 7, 2026" and "9:30 PM", for a page that keeps the time whole when the line wraps. */
+export function receiptDateParts(at: number, timeZone: string, weekday: "short" | "long"): [date: string, time: string] {
   const key = `${timeZone}|${weekday}`;
   let formatter = dateFormatters.get(key);
   if (!formatter) {
     formatter = new Intl.DateTimeFormat("en-US", { timeZone, weekday, month: "long", day: "numeric", year: "numeric" });
     dateFormatters.set(key, formatter);
   }
-  return `${formatter.format(at)} · ${formatClosedTime(at, timeZone)}`;
+  return [formatter.format(at), formatClosedTime(at, timeZone)];
+}
+
+/** "Sat, November 7, 2026 · 9:30 PM" (11), or with the weekday in full (25b). */
+export function receiptDate(at: number, timeZone: string, weekday: "short" | "long"): string {
+  const [date, time] = receiptDateParts(at, timeZone, weekday);
+  return `${date} · ${time}`;
 }
 
 /** The file name a browser saves 25b as (Chrome takes it from the page title while it prints). */

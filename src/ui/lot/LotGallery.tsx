@@ -20,8 +20,8 @@ interface LotGalleryProps {
   isFavorite: boolean;
 }
 
-const circleButton = "flex size-40 cursor-pointer items-center justify-center rounded-full bg-white/95 text-ink";
-const photoLabel = "absolute bottom-18 left-22 font-mono text-12 text-ink2";
+const circleButton = "flex size-40 cursor-pointer items-center justify-center rounded-full bg-white/95 text-ink max-md:size-44";
+const photoLabel = "absolute bottom-18 left-22 font-mono text-12 text-ink2 max-md:bottom-14 max-md:left-16";
 
 const COPIED_MS = 2_000;
 
@@ -81,8 +81,9 @@ export function LotGallery({ slug, lotNumber, title, photos, isFavorite }: LotGa
 
   return (
     <div>
-      <div className="relative flex h-560 items-center justify-center rounded-24 bg-stone-tile">
-        <div className="absolute top-18 right-18 flex gap-8">
+      {/* Below 1280 the photo keeps the approved 716 by 560 shape as it narrows; a phone's is wider and lower. */}
+      <div className="relative flex h-560 items-center justify-center rounded-24 bg-stone-tile max-xl:aspect-[716/560] max-xl:h-auto max-md:aspect-[3/2] max-md:rounded-20">
+        <div className="absolute top-18 right-18 flex gap-8 max-md:top-12 max-md:right-12">
           <button
             type="button"
             onClick={favorite.toggle}
@@ -96,7 +97,9 @@ export function LotGallery({ slug, lotNumber, title, photos, isFavorite }: LotGa
             <ShareIcon size={18} />
           </button>
         </div>
-        {coverDrawing && <LotIllustration drawing={coverDrawing} variant="hero" />}
+        {coverDrawing && (
+          <LotIllustration drawing={coverDrawing} variant="hero" className="max-lg:h-auto max-lg:max-h-[54%] max-lg:w-auto" />
+        )}
         {copied ? (
           <p role="status" className={photoLabel}>
             LINK COPIED
@@ -109,12 +112,12 @@ export function LotGallery({ slug, lotNumber, title, photos, isFavorite }: LotGa
       </div>
 
       {photos.length > 1 && (
-        <div className="mt-12 grid grid-cols-4 gap-12">
+        <div className="mt-12 grid grid-cols-4 gap-12 max-md:mt-8 max-md:gap-8">
           {photos.map((photo, index) => (
             <div
               key={index}
               className={cn(
-                "flex h-92 items-center justify-center rounded-16 bg-stone",
+                "flex h-92 items-center justify-center rounded-16 bg-stone max-lg:h-72 max-md:h-56 max-md:rounded-12",
                 index === 0 && "outline-[1.5px] outline-ink outline-offset-[-1.5px]",
               )}
             >

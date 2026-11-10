@@ -10,14 +10,18 @@ import { PaddleMark } from "../PaddleMark";
  * The board's panel is 516px tall, as tall as the left column with the sandbox buyer card. The 52px
  * above and below keep that height when the card is not shown (no buyer in the environment), so
  * the ink band never sits on the panel's top edge.
+ *
+ * Below 1440 the panel gives up width before anything else: on a laptop its insets are 32px, below
+ * 1024 it sits under the promise at up to the board's 544px, and on a phone its insets are 16px,
+ * Glim is at 56px (the corner's phone size) and the hello wraps.
  */
 export function HomeShowcase() {
   return (
     <aside
       aria-label="How a guest bids"
-      className="flex flex-col justify-center rounded-24 bg-surface px-48 py-52"
+      className="flex flex-col justify-center rounded-24 bg-surface px-48 py-52 max-desk:min-w-0 max-desk:px-32 max-lg:max-w-544 max-lg:px-48 max-md:px-16 max-md:py-24"
     >
-      <div className="flex h-64 items-center rounded-24 bg-ink px-8 text-white">
+      <div className="flex h-64 items-center rounded-24 bg-ink px-8 text-white max-md:h-auto max-md:min-h-64 max-md:py-8 max-md:pr-16">
         <div className="flex items-center gap-14">
           <span className="flex size-48 flex-none items-center justify-center rounded-full bg-white/8">
             <LockIcon size={18} />
@@ -29,14 +33,14 @@ export function HomeShowcase() {
         </div>
       </div>
 
-      <div className="mt-24 flex items-center gap-16">
+      <div className="mt-24 flex items-center gap-16 max-md:gap-12">
         {/* 15's 88px orb: the 68px orb zoomed, so its eyes and shading keep their approved proportions. */}
-        <span className="flex-none [zoom:1.29412]">
+        <span className="flex-none [zoom:1.29412] max-md:[zoom:0.82353]">
           <Orb size={68} />
         </span>
         <p className="min-w-0 flex-1 rounded-[18px_18px_18px_6px] bg-white px-14 py-11 text-14 leading-[1.45] shadow-[0_1px_0_rgba(11,11,12,.04)]">
-          <span className="block whitespace-nowrap">Hi, I’m Glim.</span>
-          <span className="block whitespace-nowrap">I bid for you, within your limits.</span>
+          <span className="block whitespace-nowrap max-md:whitespace-normal">Hi, I’m Glim.</span>
+          <span className="block whitespace-nowrap max-md:whitespace-normal">I bid for you, within your limits.</span>
         </p>
       </div>
 

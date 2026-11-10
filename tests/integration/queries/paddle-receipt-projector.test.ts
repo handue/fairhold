@@ -44,8 +44,11 @@ describe("My paddle (10) on the seeded evening", () => {
   it("follows a pause, and a raise waiting in a PayPal window", async () => {
     const fixture = await createFixtureEvent({ moment: "paddle" }, pool);
     await expect(pausePlan({ paddleId: fixture.jamie.paddleId, pool })).resolves.toMatchObject({ ok: true });
+    // The raise's window opens after the $500 hold; the fixture's evening may be ahead of the real clock.
     await pool.query(
-      `insert into holds (event_id, paddle_id, kind, amount_cents, status) values ($1, $2, 'paypal', 80000, 'pending_approval')`,
+      `insert into holds (event_id, paddle_id, kind, amount_cents, status, created_at)
+       select $1, $2, 'paypal', 80000, 'pending_approval', greatest(now(), max(created_at) + interval '1 second')
+       from holds where paddle_id = $2 and status = 'authorized'`,
       [fixture.event.id, fixture.jamie.paddleId],
     );
     const { view } = await paddleView();
@@ -56,6 +59,19 @@ describe("My paddle (10) on the seeded evening", () => {
     );
     expect(view.rows.slice(0, 2).map((row) => row.note.tail)).toEqual(["paused", "paused"]);
     expect(view.money.raisePending).toBe(true);
+  });
+
+  it("does not take a first try whose window was blocked for a raise, once a later hold is approved", async () => {
+    const fixture = await createFixtureEvent({ moment: "paddle" }, pool);
+    // The blocked first try: created before the $500 hold that the guest then approved.
+    await pool.query(
+      `insert into holds (event_id, paddle_id, kind, amount_cents, status, created_at)
+       select $1, $2, 'paypal', 50000, 'pending_approval', least(now(), min(created_at) - interval '1 second')
+       from holds where paddle_id = $2 and status = 'authorized'`,
+      [fixture.event.id, fixture.jamie.paddleId],
+    );
+    const { view } = await paddleView();
+    expect(view.money.raisePending).toBe(false);
   });
 
   it("shows a guest with a hold and no bids as 23 state 1 draws it", async () => {

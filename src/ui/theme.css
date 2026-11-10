@@ -10,6 +10,15 @@
 @theme {
   --spacing: 1px;
 
+  /*
+   * Widths. Every approved board is 1440 wide, and at 1440 and above each page renders exactly as
+   * approved. Narrower layouts are added with max-* variants only, so the desktop classes never move:
+   *   max-desk: below 1440 (laptops, 1024 to 1439)
+   *   max-lg:   below 1024 (tablets, 768 to 1023)
+   *   max-md:   below 768 (phones, designed at 375 and checked down to 320)
+   */
+  --breakpoint-desk: 90rem;
+
   --color-*: initial;
   --color-lime: #daf66e;
   --color-lime-edge: #a9c93a;
@@ -38,11 +47,19 @@
   --text-14: 14px;
   --text-15: 15px;
   --text-16: 16px;
+  --text-18: 18px;
   --text-20: 20px;
   --text-22: 22px;
+  --text-24: 24px;
+  --text-26: 26px;
   --text-28: 28px;
   --text-30: 30px;
+  --text-32: 32px;
   --text-34: 34px;
+  --text-36: 36px;
+  --text-40: 40px;
+  --text-44: 44px;
+  --text-48: 48px;
   --text-56: 56px;
 
   --tracking-*: initial;

@@ -3,7 +3,7 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { ApiClientError, apiPost } from "../api";
 import { cn } from "../cn";
@@ -34,6 +34,64 @@ type Notice =
 const UNREADABLE = "Something went wrong. Please try again.";
 /** Plain lines stay this long; refusals and the invite stay until dismissed. */
 const DONE_LINE_MS = 6_000;
+/**
+ * On a phone the menu and its card stay 16px inside the screen, and each item is a 44px row. Below 1440,
+ * on a screen too short for them (a phone held sideways), they scroll within what is left; at 1440 they
+ * are the approved boxes (a scroller repaints their icons a shade differently).
+ */
+const COLLISION_PADDING = 16;
+/** A press outside the menu that ends without a click (a long press, a right click) stops counting after this. */
+const DISMISS_CLICK_MS = 500;
+
+/**
+ * The tap or click that closes the menu from outside only closes it. The menu isn't modal (the page
+ * behind keeps scrolling and stays readable), so without this the same tap would also open the lot or
+ * press the button under it, and on a phone the menu covers most of the screen's width. A swipe that
+ * scrolls the page (pointercancel) swallows nothing. Listening on window, in the capture phase, runs
+ * before React's and Radix's own listeners, so the menu is closed here.
+ */
+function useDismissOnlyClick(open: boolean, close: () => void, inside: RefObject<HTMLElement | null>[]) {
+  const state = useRef({ open, close, inside });
+  useEffect(() => {
+    state.current = { open, close, inside };
+  });
+  useEffect(() => {
+    let armed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const disarm = () => {
+      armed = false;
+      clearTimeout(timer);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      disarm();
+      const target = event.target instanceof Node ? event.target : null;
+      armed = state.current.open && !state.current.inside.some((ref) => target && ref.current?.contains(target));
+    };
+    const onPointerUp = () => {
+      if (!armed) return;
+      clearTimeout(timer);
+      timer = setTimeout(disarm, DISMISS_CLICK_MS);
+    };
+    const onClick = (event: MouseEvent) => {
+      if (!armed) return;
+      disarm();
+      event.preventDefault();
+      event.stopPropagation();
+      state.current.close();
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", disarm, true);
+    window.addEventListener("click", onClick, true);
+    return () => {
+      disarm();
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", disarm, true);
+      window.removeEventListener("click", onClick, true);
+    };
+  }, []);
+}
 
 /**
  * The paddle pill's menu of design/18, for a demo gala's creator: Guest view and Organizer view,
@@ -49,6 +107,10 @@ export function RoleMenu({ slug, view, className, children }: RoleMenuProps) {
   const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** A pick made with the pointer leaves focus where it is; a keyboard pick returns it to the pill. */
   const pickedByPointer = useRef(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menu = useRef<HTMLDivElement | null>(null);
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  useDismissOnlyClick(menuOpen, () => setMenuOpen(false), [menu, trigger]);
 
   if (!role?.isOrganizer) return <div className={className}>{children}</div>;
   const { timeZone } = role;
@@ -102,18 +164,20 @@ export function RoleMenu({ slug, view, className, children }: RoleMenuProps) {
 
   return (
     <Popover.Root open={notice !== null} onOpenChange={(open) => !open && show(null)}>
-      <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Root modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
         <Popover.Anchor asChild>
           <DropdownMenu.Trigger asChild>
-            <button type="button" className={cn(className, "cursor-pointer")}>
+            <button ref={trigger} type="button" className={cn(className, "cursor-pointer")}>
               {children}
             </button>
           </DropdownMenu.Trigger>
         </Popover.Anchor>
         <DropdownMenu.Portal>
           <DropdownMenu.Content
+            ref={menu}
             align="end"
             sideOffset={8}
+            collisionPadding={COLLISION_PADDING}
             aria-label="Demo menu"
             onPointerDown={() => (pickedByPointer.current = true)}
             onKeyDown={() => (pickedByPointer.current = false)}
@@ -121,7 +185,7 @@ export function RoleMenu({ slug, view, className, children }: RoleMenuProps) {
               if (pickedByPointer.current) event.preventDefault();
               pickedByPointer.current = false;
             }}
-            className="z-50 w-260 rounded-16 border border-line bg-white p-6 shadow-bubble outline-none"
+            className="z-50 w-260 rounded-16 border border-line bg-white p-6 shadow-bubble outline-none max-desk:max-h-[var(--radix-dropdown-menu-content-available-height)] max-desk:overflow-y-auto max-desk:overscroll-contain"
           >
             <DropdownMenu.RadioGroup value={view} onValueChange={goTo}>
               <ViewItem value="guest" label="Guest view" />
@@ -144,10 +208,11 @@ export function RoleMenu({ slug, view, className, children }: RoleMenuProps) {
         <Popover.Content
           align="end"
           sideOffset={8}
+          collisionPadding={COLLISION_PADDING}
           onOpenAutoFocus={(event) => notice?.kind !== "invite" && event.preventDefault()}
           // The menu hands focus back to the pill as it closes; that is not the guest leaving the card.
           onFocusOutside={(event) => event.preventDefault()}
-          className="z-50 w-260 rounded-16 border border-line bg-white p-14 shadow-bubble outline-none"
+          className="z-50 w-260 rounded-16 border border-line bg-white p-14 shadow-bubble outline-none max-desk:max-h-[var(--radix-popover-content-available-height)] max-desk:overflow-y-auto max-desk:overscroll-contain"
         >
           {notice && <NoticeBody notice={notice} />}
         </Popover.Content>
@@ -157,7 +222,7 @@ export function RoleMenu({ slug, view, className, children }: RoleMenuProps) {
 }
 
 const ITEM =
-  "flex h-36 cursor-pointer items-center gap-10 rounded-[10px] px-10 text-14 whitespace-nowrap text-ink outline-none select-none data-[highlighted]:bg-surface";
+  "flex h-36 cursor-pointer items-center gap-10 rounded-[10px] px-10 text-14 whitespace-nowrap text-ink outline-none select-none data-[highlighted]:bg-surface max-md:h-44";
 
 function ViewItem({ value, label }: { value: DemoView; label: string }) {
   return (

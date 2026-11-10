@@ -9,7 +9,7 @@ import { ApiClientError, apiPost } from "../api";
 import { buttonClass } from "../Button";
 import { cn } from "../cn";
 import { Eyebrow } from "../Eyebrow";
-import { formatBidCount, formatClockTime, formatClosedTime, formatPaddleNumber } from "../format";
+import { formatBidCount, formatClockTime, formatClosedTime, formatPaddleNumber, keepTogether } from "../format";
 import { openGlim } from "../glim-events";
 import { ArrowRightIcon, ClockIcon, LockIcon } from "../icons";
 import { Countdown } from "../LiveTime";
@@ -148,7 +148,7 @@ function OpenBidCard({
   const standingMax = !maxOpen && action.kind === "place" ? power.limitHereCents : null;
 
   return (
-    <section aria-label="Place a bid" className="mt-22 rounded-22 border border-line p-20">
+    <section aria-label="Place a bid" className="mt-22 rounded-22 border border-line p-20 max-md:mt-18 max-md:rounded-20 max-md:p-16">
       <PriceHeader
         label={priceLabel("open", lot.currentBidCents)}
         pill={
@@ -211,7 +211,7 @@ function OpenBidCard({
             value={maxFieldText(maxDigits)}
             onChange={(event) => changeChoice(() => setMaxDigits(maxFieldDigits(event.target.value)))}
             onKeyDown={submitOnEnter}
-            className="min-w-0 flex-1 bg-transparent font-mono text-14 font-medium outline-none placeholder:text-muted"
+            className="min-w-0 flex-1 bg-transparent font-mono text-14 font-medium outline-none placeholder:text-muted max-md:text-16"
           />
           <span className="ml-12 text-12.5 text-muted">Your max</span>
         </label>
@@ -291,12 +291,15 @@ function ActionLines({
   return null;
 }
 
-/** State 2's line: what a max does. It stays while the max stands. */
+/**
+ * State 2's line: what a max does. It stays while the max stands. Below 1440 the line wraps, and "up to"
+ * stays with the amount it names (no-break spaces, which draw as spaces, so 1440's line is as approved).
+ */
 function MaxLine({ raiseCents, maxCents }: { raiseCents: number; maxCents: number | null }) {
   return (
-    <p className="mt-12 text-13 leading-20 whitespace-nowrap text-ink2">
-      Outbid? Your bid goes <Amount cents={raiseCents} /> over theirs, automatically, up to{" "}
-      {maxCents === null ? "your max" : <Amount cents={maxCents} />}.
+    <p className="mt-12 text-13 leading-20 whitespace-nowrap text-ink2 max-desk:whitespace-normal">
+      Outbid? Your bid goes <Amount cents={raiseCents} /> over theirs, automatically, up&nbsp;to{"\u00a0"}
+      {maxCents === null ? keepTogether("your max") : <Amount cents={maxCents} />}.
     </p>
   );
 }
@@ -449,11 +452,12 @@ function SettledBidCard({
   }
 
   return (
-    <section aria-label="Place a bid" className="mt-22 rounded-22 border border-line p-20">
+    <section aria-label="Place a bid" className="mt-22 rounded-22 border border-line p-20 max-md:mt-18 max-md:rounded-20 max-md:p-16">
       <PriceHeader label={priceLabel(phase, lot.currentBidCents)} pill={pill} cents={lot.currentBidCents ?? lot.startingBidCents}>
         {sub}
       </PriceHeader>
-      <div className="mt-20 flex h-56 items-center justify-between rounded-16 bg-surface px-20 text-15 font-medium whitespace-nowrap text-ink2">
+      {/* In a narrower card a long line wraps beside its figure, which never breaks. */}
+      <div className="mt-20 flex h-56 items-center justify-between rounded-16 bg-surface px-20 text-15 font-medium whitespace-nowrap text-ink2 max-xl:h-auto max-xl:min-h-56 max-xl:gap-12 max-xl:py-12 max-xl:whitespace-normal max-xl:[&>b]:whitespace-nowrap max-md:px-16">
         {result}
       </div>
       <TrustLine>{trustLine(phase, null, event.status)}</TrustLine>
@@ -469,17 +473,19 @@ function PriceHeader({ label, pill, cents, children }: { label: string; pill: Re
         <Eyebrow>{label}</Eyebrow>
         {pill}
       </div>
-      <p className="mt-12 font-mono text-56 leading-none font-medium tracking-display">
+      <p className="mt-12 font-mono text-56 leading-none font-medium tracking-display max-md:mt-10 max-md:text-40">
         <Money cents={cents} />
       </p>
-      <div className="mt-12 flex h-17 items-center gap-16 text-13 text-ink2">{children}</div>
+      <div className="mt-12 flex h-17 items-center gap-16 text-13 text-ink2 max-md:mt-10 max-md:h-auto max-md:min-h-17 max-md:flex-wrap max-md:gap-y-4">
+        {children}
+      </div>
     </>
   );
 }
 
 function TrustLine({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-12 flex items-center gap-8 text-12.5 text-ink2">
+    <p className="mt-12 flex items-center gap-8 text-12.5 text-ink2 max-xl:text-balance">
       <LockIcon size={15} />
       {children}
     </p>

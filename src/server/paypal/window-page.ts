@@ -309,6 +309,12 @@ function outcomeScript(page: PaypalWindowPage): string {
 /**
  * 17's window page: 08's brand lockup top left, one centred status block, 09's trust line at the
  * foot. Geist comes from /paypal/fonts, since these pages are outside the app's own stylesheet.
+ *
+ * The window opens at 520x720 and a full-page trip shows the same layout. On a phone, where 09's
+ * "Continue to PayPal in this tab" brings these pages up as a full tab, and on any screen too short
+ * for the fixed positions (below 480 wide or 560 tall), the page is one column instead: the brand,
+ * the status block centred in what is left, the trust line at the foot, and a full-width 48px button.
+ * (The foot's env(safe-area-inset-bottom) is 0: iOS reports it only with viewport-fit=cover.)
  */
 const STYLE = `
 @font-face{font-family:"Geist";src:url("/paypal/fonts/geist-sans.woff2") format("woff2");font-weight:100 900;font-display:swap}
@@ -335,6 +341,16 @@ h1{margin-top:8px;font-size:26px;line-height:32px;font-weight:600;letter-spacing
 .foot{position:absolute;left:0;right:0;bottom:28px;display:flex;justify-content:center;align-items:center;gap:8px;font-size:12.5px;line-height:18px;color:#3A3A3D;white-space:nowrap}
 .foot>span{display:flex;align-items:center;gap:8px}
 .foot svg{flex:none}
+@media (max-width:479px),(max-height:559px){
+.pw{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
+.brand{position:static;padding:20px 16px 0}
+.mid{position:static;flex:1 0 auto;justify-content:center;padding:32px 16px 88px}
+.ey{white-space:normal}
+h1,.body span{text-wrap:balance}
+.body{max-width:480px}
+.btn{width:100%;max-width:400px;height:48px;justify-content:center;font-size:15px}
+.foot{position:static;padding:0 16px calc(24px + env(safe-area-inset-bottom));white-space:normal;text-align:center}
+}
 `;
 
 function documentStart(title: string): string {

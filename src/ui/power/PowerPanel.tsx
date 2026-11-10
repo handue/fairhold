@@ -78,11 +78,11 @@ function chosenAmount(choice: Choice): number | null {
 /** A page with nothing to choose. Undrawn: plain copy, with no image to replace it yet. */
 function NothingToHold({ title, line, returnHref }: { title: string; line: string; returnHref: string }) {
   return (
-    <main className="mx-auto flex w-880 flex-col items-center pt-96 text-center">
+    <main className="mx-auto flex w-880 flex-col items-center pt-96 text-center max-desk:pt-56 max-lg:w-full max-lg:px-32 max-md:px-16 max-md:pt-24">
       <Eyebrow className="leading-16">Bidding power</Eyebrow>
-      <h1 className="mt-8 text-34 leading-40 font-semibold tracking-title">{title}</h1>
+      <h1 className="mt-8 text-34 leading-40 font-semibold tracking-title max-md:text-26 max-md:leading-32 max-md:text-balance">{title}</h1>
       <p className="mt-8 text-16 leading-24 text-ink2">{line}</p>
-      <Link href={returnHref} className="mt-24 text-14 font-medium underline">
+      <Link href={returnHref} className="mt-24 text-14 font-medium underline max-md:mt-10 max-md:py-14">
         Back to the lots
       </Link>
     </main>
@@ -104,7 +104,11 @@ export interface PowerPanelProps {
   initialCents: number | null;
 }
 
-/** Screen 09's one column: choose an amount, understand the hold, approve it in a PayPal window. */
+/**
+ * Screen 09's one column: choose an amount, understand the hold, approve it in a PayPal window. On a
+ * phone the Hold button comes right after the amount, so it is on the first screen, and the explainer
+ * follows it (its `order`).
+ */
 export function PowerPanel({
   slug,
   limits,
@@ -185,15 +189,16 @@ export function PowerPanel({
     selected ? "border-ink bg-ink text-white" : cn("border-line", copy.locked && "opacity-40");
 
   return (
-    <main className="mx-auto flex w-880 flex-col items-center pt-96 text-center tabular-nums">
+    <main className="mx-auto flex w-880 flex-col items-center pt-96 text-center max-desk:pt-56 max-lg:w-full max-lg:px-32 max-md:px-16 max-md:pt-24 tabular-nums">
       <Eyebrow className="leading-16">{words.eyebrow}</Eyebrow>
-      <h1 className="mt-8 text-34 leading-40 font-semibold tracking-title">{words.title}</h1>
-      <p className="mt-8 text-16 leading-24 text-ink2">
-        {words.lede} <b className="font-medium text-ink">{words.promise}</b>
+      <h1 className="mt-8 text-34 leading-40 font-semibold tracking-title max-md:text-26 max-md:leading-32 max-md:text-balance">{words.title}</h1>
+      <p className="mt-8 text-16 leading-24 text-ink2 max-md:max-w-400 max-md:text-balance">
+        {/* On a phone each sentence starts its own line. */}
+        {words.lede} <b className="font-medium text-ink max-md:block">{words.promise}</b>
       </p>
 
-      <div className="w-480 text-left">
-        <div className={cn(raising ? "mt-32" : "mt-40", "flex items-baseline justify-between")}>
+      <div className="w-480 text-left max-lg:w-full max-lg:max-w-480">
+        <div className={cn(raising ? "mt-32" : "mt-40", "flex items-baseline justify-between max-md:mt-28 max-md:flex-wrap max-md:gap-x-12 max-md:gap-y-4")}>
           <Eyebrow className="leading-16">{words.amountLabel}</Eyebrow>
           <span className="text-12.5 leading-16 text-muted">{copy.amountNote ?? words.amountNote}</span>
         </div>
@@ -244,17 +249,18 @@ export function PowerPanel({
               value={shown.digits === "" ? "" : `$${Number(shown.digits).toLocaleString("en-US")}`}
               onChange={typeOther}
               placeholder="$"
-              className="mt-8 h-48 w-full rounded-12 px-16 font-mono text-15 font-medium tabular-nums outline-none inset-ring-[1.5px] inset-ring-ink placeholder:text-muted"
+              // 16px on a phone, so iOS doesn't zoom in on focus.
+              className="mt-8 h-48 w-full rounded-12 px-16 font-mono text-15 font-medium tabular-nums outline-none inset-ring-[1.5px] inset-ring-ink placeholder:text-muted max-md:text-16"
             />
             {issue ? (
-              <p role="alert" className="mt-8 flex items-center gap-6 text-12.5 leading-16 whitespace-nowrap text-ink2">
+              <p role="alert" className="mt-8 flex items-center gap-6 text-12.5 leading-16 whitespace-nowrap text-ink2 max-md:items-start max-md:whitespace-normal">
                 <AlertIcon />
                 <span>
                   <IssueLine issue={issue} />
                 </span>
               </p>
             ) : (
-              <p className="mt-8 text-12.5 leading-16 whitespace-nowrap text-muted">
+              <p className="mt-8 text-12.5 leading-16 whitespace-nowrap text-muted max-md:whitespace-normal">
                 Whole dollars, <Amount cents={lowestCents} /> to <Amount cents={highestCents} />.
               </p>
             )}
@@ -268,11 +274,11 @@ export function PowerPanel({
         <HowTheHoldWorks holdCents={explainedCents} closesLabel={closesLabel} exampleLot={exampleLot} />
       )}
 
-      <div className={cn(raising ? "mt-24" : "mt-40", "w-480 text-left")}>
+      <div className={cn(raising ? "mt-24" : "mt-40", "w-480 text-left max-lg:w-full max-lg:max-w-480 max-md:mt-24")}>
         {copy.notice && <Notice notice={copy.notice} />}
         <HoldButton copy={copy} onHold={hold} />
         {copy.continueHref && (
-          <p className="mt-16 flex items-center gap-6 text-13 leading-18 whitespace-nowrap text-ink2">
+          <p className="mt-16 flex items-center gap-6 text-13 leading-18 whitespace-nowrap text-ink2 max-md:flex-wrap">
             Didn’t open?
             <a
               href={copy.continueHref}
@@ -283,14 +289,15 @@ export function PowerPanel({
                 event.preventDefault();
                 continueInThisTab({ holdId: state.holdId, approvalUrl: state.approvalUrl }, window);
               }}
-              className="flex items-center gap-6 font-semibold text-ink"
+              // On a phone the link is a 44px target, its extra height taken back by the margins, so the line keeps its place.
+              className="flex items-center gap-6 font-semibold text-ink max-md:-my-13 max-md:min-h-44"
             >
               Continue in this tab
               <ArrowRightIcon size={14} />
             </a>
           </p>
         )}
-        <p className={cn(copy.continueHref ? "mt-10" : "mt-16", "flex items-center gap-8 text-12.5 leading-18 text-ink2")}>
+        <p className={cn(copy.continueHref ? "mt-10" : "mt-16", "flex items-center gap-8 text-12.5 leading-18 text-ink2 max-md:text-balance")}>
           {copy.trustIcon === "window" ? <BrowserWindowIcon size={15} /> : <LockIcon size={15} />}
           {copy.trust ?? words.trust}
         </p>

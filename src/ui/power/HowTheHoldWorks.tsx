@@ -11,8 +11,10 @@ import { PaddleMark } from "../PaddleMark";
 
 import { FigureLockIcon } from "./icons";
 
-const FIGURES = "mt-24 flex h-22 items-center text-13 whitespace-nowrap text-muted";
-const FIGURE = "flex min-w-0 items-center gap-6";
+// Below 1024 the figures keep to their own widths, at either end of the bar, so a narrow step never
+// lets "$180 released" run into "$320 paid".
+const FIGURES = "mt-24 flex h-22 items-center text-13 whitespace-nowrap text-muted max-lg:justify-between max-md:mt-14";
+const FIGURE = "flex min-w-0 items-center gap-6 max-lg:flex-none!";
 const AMOUNT = "font-mono text-13 font-medium text-ink";
 const FIGURE_NOTE = "-ml-1 not-italic";
 const BAR = "mt-8 flex h-10";
@@ -37,7 +39,7 @@ function Step({ label, first = false, last = false, children }: { label: string;
         >
           {label}
         </span>
-        {!last && <i className="-mr-24 block h-1 flex-1 bg-[rgba(11,11,12,.14)]" />}
+        {!last && <i className="-mr-24 block h-1 flex-1 bg-[rgba(11,11,12,.14)] max-lg:-mr-16 max-md:hidden" />}
       </div>
       {children}
     </article>
@@ -46,9 +48,9 @@ function Step({ label, first = false, last = false, children }: { label: string;
 
 function Caption({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mt-24">
+    <div className="mt-24 max-md:mt-14">
       <b className="block text-15 leading-20 font-semibold tracking-[-.005em]">{title}</b>
-      <span className="mt-4 block text-13 leading-18 text-muted">{children}</span>
+      <span className="mt-4 block text-13 leading-18 text-muted max-lg:text-pretty">{children}</span>
     </div>
   );
 }
@@ -70,15 +72,19 @@ export function HowTheHoldWorks({ holdCents, closesLabel, exampleLot }: HowTheHo
   const hold = formatUsd(holdCents);
 
   return (
-    <section aria-label="How the hold works" className="mt-40 w-880 rounded-24 bg-surface p-32 text-left">
-      <div className="flex h-16 items-center justify-between">
+    // On a phone the three moments stack, each with its own full-width bar, and the card follows the Hold button.
+    <section
+      aria-label="How the hold works"
+      className="mt-40 w-880 rounded-24 bg-surface p-32 text-left max-lg:w-full max-lg:p-28 max-md:order-1 max-md:mt-32 max-md:rounded-20 max-md:p-20"
+    >
+      <div className="flex h-16 items-center justify-between max-md:h-auto max-md:flex-col max-md:items-start max-md:gap-6">
         <Eyebrow className="leading-16">How the hold works</Eyebrow>
-        <span className="text-13 text-muted">
+        <span className="text-13 text-muted max-md:leading-18">
           Example: you win {exampleLot ? `the ${exampleLot}` : "a lot"} at {formatUsd(winCents)}
         </span>
       </div>
 
-      <div className="mt-24 grid grid-cols-3 gap-x-32">
+      <div className="mt-24 grid grid-cols-3 gap-x-32 max-lg:gap-x-24 max-md:mt-20 max-md:grid-cols-1 max-md:gap-y-22">
         <Step label="When you approve" first>
           <div className={cn(FIGURES, "gap-2")}>
             <span className={FIGURE}>

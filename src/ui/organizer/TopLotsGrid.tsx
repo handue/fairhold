@@ -17,6 +17,7 @@ import {
   type GetRowIdParams,
   type GridApi,
   type GridReadyEvent,
+  type GridSizeChangedEvent,
   type ICellRendererParams,
   type Module,
 } from "ag-grid-community";
@@ -27,6 +28,7 @@ import type { InsightsLot } from "@/server/settlement/types";
 import { formatLotNumber, formatPaddleNumber, formatUsd } from "@/ui/format";
 import { Money } from "@/ui/Money";
 import { Orb } from "@/ui/Orb";
+import { TABLET_QUERY, useMediaQuery } from "@/ui/useMediaQuery";
 
 import { TOP_LOTS } from "./insights-model";
 import { csvSafe } from "./ledger-model";
@@ -90,6 +92,20 @@ const ICONS = {
 };
 
 const getRowId = ({ data }: GetRowIdParams<InsightsLot>) => String(data.number);
+/**
+ * The columns' widths, and Title's narrowest. Below 1024 the number columns narrow (Estimated value's
+ * header takes two lines) and Title gets their room: at 1440's widths a tablet's full-width widget
+ * left it 128px, about ten characters, and a phone showed "01" and "Name the Ne…".
+ */
+const WIDTHS = {
+  desk: { lot: 72, title: 128, amount: 104, value: 148, bids: 76, paddle: 108, glim: 66 },
+  narrow: { lot: 56, title: 170, amount: 104, value: 104, bids: 64, paddle: 80, glim: 64 },
+} as const;
+/**
+ * The columns' narrowest widths together: a tablet's full-width widget shows every column, and
+ * anything narrower scrolls sideways inside the widget with the lot number kept in place.
+ */
+const minWidth = (widths: (typeof WIDTHS)[keyof typeof WIDTHS]) => Object.values(widths).reduce((sum, width) => sum + width, 0);
 const usd = ({ value }: { value?: unknown }) => (typeof value === "number" ? formatUsd(value) : "—");
 
 function MoneyCell({ value }: ICellRendererParams<InsightsLot, number | null>) {
@@ -147,6 +163,10 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
   const api = useRef<GridApi<InsightsLot> | null>(null);
   const known = useRef(rows);
   const [initialRows] = useState(() => [...rows]);
+  const [frameWidth, setFrameWidth] = useState<number | null>(null);
+  const tablet = useMediaQuery(TABLET_QUERY);
+  const widths = WIDTHS[tablet ? "narrow" : "desk"];
+  const narrow = frameWidth !== null && frameWidth < minWidth(widths);
 
   const columns = useMemo<ColDef<InsightsLot>[]>(
     () => [
@@ -154,7 +174,8 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
         colId: "lot",
         headerName: "Lot",
         field: "number",
-        width: 72,
+        width: widths.lot,
+        pinned: narrow ? "left" : null,
         cellClass: "ledger-paddle",
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatLotNumber(value ?? 0),
@@ -164,7 +185,7 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
         headerName: "Title",
         field: "title",
         flex: 1,
-        minWidth: 160,
+        minWidth: widths.title,
         cellClass: "ledger-bidder",
         cellRenderer: TitleCell,
         filter: "agTextColumnFilter",
@@ -175,7 +196,7 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
         headerName: amountHeader,
         field: "amountCents",
         type: "rightAligned",
-        width: 104,
+        width: widths.amount,
         initialSort: "desc",
         cellClass: "ag-right-aligned-cell ledger-amount ledger-charge",
         cellRenderer: MoneyCell,
@@ -189,7 +210,10 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
         headerName: "Estimated value",
         field: "estimatedValueCents",
         type: "rightAligned",
-        width: 148,
+        width: widths.value,
+        wrapHeaderText: tablet,
+        autoHeaderHeight: tablet,
+        headerClass: tablet ? "ledger-header-wraps" : undefined,
         cellClass: "ag-right-aligned-cell ledger-amount ledger-soft",
         cellRenderer: MoneyCell,
         valueFormatter: usd,
@@ -201,7 +225,7 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
         headerName: "Bids",
         field: "bids",
         type: "rightAligned",
-        width: 76,
+        width: widths.bids,
         cellClass: "ag-right-aligned-cell ledger-amount ledger-soft",
         enableCellChangeFlash: true,
         filter: "agNumberColumnFilter",
@@ -210,7 +234,7 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
         colId: "paddle",
         headerName: "Paddle",
         field: "paddleNumber",
-        width: 108,
+        width: widths.paddle,
         cellClass: "ledger-paddle",
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => (typeof value === "number" ? formatPaddleNumber(value) : "—"),
@@ -219,14 +243,14 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
         colId: "glim",
         headerName: "Glim",
         field: "glim",
-        width: 66,
+        width: widths.glim,
         cellRenderer: GlimCell,
         valueFormatter: ({ value }) => (value ? "Yes" : "No"),
         filter: "agTextColumnFilter",
         filterValueGetter: ({ data }) => (data?.glim ? "Yes" : "No"),
       },
     ],
-    [amountHeader],
+    [amountHeader, narrow, tablet, widths],
   );
 
   const defaultColDef = useMemo<ColDef<InsightsLot>>(
@@ -237,6 +261,7 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
   const onGridReady = useCallback((event: GridReadyEvent<InsightsLot>) => {
     api.current = event.api;
   }, []);
+  const onGridSizeChanged = useCallback((event: GridSizeChangedEvent<InsightsLot>) => setFrameWidth(event.clientWidth), []);
 
   // Bids landing while the page is open: only the lots that changed, and their changed cells flash.
   useEffect(() => {
@@ -272,12 +297,15 @@ export default function TopLotsGrid({ rows, amountHeader, slug, handleRef }: Top
       getRowId={getRowId}
       domLayout="autoHeight"
       ensureDomOrder
+      // Narrow frames scroll sideways; every column is drawn so a swipe never shows empty cells.
+      suppressColumnVirtualisation
       pagination
       paginationPageSize={TOP_LOTS}
       paginationPageSizeSelector={false}
       suppressPaginationPanel
       tooltipShowDelay={300}
       onGridReady={onGridReady}
+      onGridSizeChanged={onGridSizeChanged}
       animateRows={false}
     />
   );

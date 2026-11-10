@@ -55,7 +55,8 @@ export function LotTile({ lot, href, timeZone, soldTo, wonLine }: LotTileProps) 
             {lot.title}
           </Link>
         </h3>
-        <div className="mt-6 flex h-30 items-center justify-between">
+        {/* Where a narrow tile can't fit the price and its action side by side, the action drops below. */}
+        <div className="mt-6 flex h-30 items-center justify-between max-desk:h-auto max-desk:min-h-30 max-desk:flex-wrap max-desk:gap-x-12 max-desk:gap-y-8 max-md:min-h-40">
           {!isOpen && lot.bidCount === 0 ? (
             // Nudged 2px so "No bids" sits on the prices' baseline in the tiles beside it.
             <span className="relative top-2 text-15 leading-26 font-semibold">No bids</span>
@@ -127,7 +128,7 @@ function TileAction({ lot, href }: { lot: CatalogLot; href: string }) {
   if (lot.status !== "open") return null;
   if (lot.viewerStatus === "outbid") {
     return (
-      <Link href={href} className={buttonClass({ variant: "outline", size: 30, className: "relative z-10" })}>
+      <Link href={href} className={buttonClass({ variant: "outline", size: 30, className: "relative z-10 max-md:h-40 max-md:px-16" })}>
         Bid again
       </Link>
     );
@@ -136,7 +137,7 @@ function TileAction({ lot, href }: { lot: CatalogLot; href: string }) {
     return (
       <GlimOpenButton
         detail={{ lotNumber: lot.number }}
-        className={cn(buttonClass({ variant: "outline", size: 30, padding: "pr-13 pl-4" }), "relative z-10")}
+        className={cn(buttonClass({ variant: "outline", size: 30, padding: "pr-13 pl-4" }), "relative z-10 max-md:h-40 max-md:pr-16 max-md:pl-9")}
       >
         <Orb size={22} />
         Let Glim watch
