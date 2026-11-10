@@ -326,13 +326,34 @@ The four states that looked wrong are fixed above.
 - So do `/paypal/start` and both window fonts.
 - Joining the seeded event answers 403 `event_view_only`.
 
+## On the hosted URL (Nov 9, 8:04 to 9:05 PM)
+
+After #3 and #4 merged, Render deployed main at a3b2c80 (live at 8:03 PM, once CI passed).
+
+- **A sweep without a hold** (headless Chrome, 15 steps, no console errors and no 5xx):
+  - Home has one button and no name field.
+  - 08 shows the guide, the Sandbox marker and the not-set band.
+  - Without a hold, 10 and 11 send the guest to 09.
+  - 09's window opens frame 1 ("Opening PayPal…") and lands on PayPal's sandbox with a token.
+  - Glim answers on live Claude in 3.5 s.
+  - The role menu has its seven items; 12, Insights and 14 load.
+  - Kai joins through 16b as paddle 189.
+  - A gone gala shows 16c.
+- **The whole path with a real sandbox hold** (the built-in browser; the user pressed the hold button, signed in to PayPal and pressed Charge, and the lead did the rest):
+  - **Frame 5:** the lead's press was blocked as a popup, and 09 showed "Continue to PayPal in this tab".
+  - **The hold:** the user's press opened the window, and $500 was authorized as buyer-1. The approved window closed by itself, and the nav read $500 / $500.
+  - **The plan:** after a $320 bid on Chef's Table and a heart on Wine Tasting, live Claude planned the golden $380 / $120 with the "On my own" block.
+  - **The autopilot:** at 8:12 PM the rival's $400 passed the limit. Glim moved the $380 left to Wine Tasting and bid $220, with its own why ("The chef's dinner is now beyond your budget…"). No tap.
+  - **The close:** Close bidding now at 8:13 PM. 11's date and its lots' "Won at" both read 8:13 PM.
+  - **The charge:** 12 read Ready to charge with all checks passed. Charge 21 winners settled at 9:04 PM: $310 captured on PayPal (7AD398548Y635810M) and $190 released. 11 reads paid.
+- **Found and fixed:** 10 showed "Finish in the PayPal window" with no raise open. The blocked first try's hold stayed `pending_approval`, and `readRaisePending` counted any pending hold while an authorized one existed. It now counts only one newer than the authorized hold (`src/server/queries/paddle.ts`), with a test that fails on the old query.
+- **Not a product fault:** while the built-in browser's pane was hidden, 12 sat on its server-rendered "Checking…" for over a minute. The page had not hydrated. Shown, it asked PayPal and passed in 1.1 s.
+- **The seeded event isn't on the hosted database** (`/e/riverside-shelter-gala` shows 16c): deploys run migrations only. Nothing links to it; the Devpost text should link the home page.
+- **Narrow windows:** every board is 1440×900 and the phone layout (SHOULD 8) was cut on Nov 7. Below about 1280 px wide the pages overlap and wrap, as the built-in browser's 504 px pane showed.
+
 ## Known gaps
 
-- **Not run yet:**
-  - The hosted URL since these boards.
-  - A real sandbox window through the new frames.
-  - Safari.
-  - The autopilot beat on the hosted URL.
+- **Not run yet:** Safari, and the autopilot beat in a normal desktop Chrome window at full width.
 - **The approved window closes after 3 s, and it is reused by name.** A second hold pressed within those 3 s can have that close land on its start, and 09 then shows frame 5 ("Continue to PayPal in this tab"). Only a press within seconds of an approval meets it. hold.spec now waits it out.
 - **A director backlog delays the rivals.** Demos started on a server with `ENGINE_ENABLED=false` keep their queued director jobs. When an engine-on server later reads the same database, it works through hundreds of overdue jobs first, and the rivals came 60 s late. Use a fresh database for the real-tick spec.
 - **The nav and a refusal can show different figures (Day 2 #20).** With the autopilot's limits, 05 reads "You have $0 left of $500" while the nav reads $190 / $500, because the refusal reserves Glim's limits.

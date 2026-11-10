@@ -127,14 +127,21 @@ export async function readPaddleGlim(db: Queryable, paddleId: string): Promise<P
   };
 }
 
-/** A raise waiting in a PayPal window: a hold newer than the paddle's authorized one, still pending. */
+/**
+ * A raise waiting in a PayPal window: a hold newer than the paddle's authorized one, still pending.
+ * An older pending hold is a first try that never reached PayPal (its window was blocked, then the
+ * guest tried again and approved), not a raise.
+ */
 export async function readRaisePending(db: Queryable, paddleId: string): Promise<boolean> {
   const { rows } = await db.query<{ pending: boolean }>(
     `select exists (
        select 1 from holds pending
        where pending.paddle_id = $1 and pending.status = 'pending_approval'
          and pending.created_at > now() - ($2::int * interval '1 millisecond')
-         and exists (select 1 from holds held where held.paddle_id = $1 and held.status = 'authorized')
+         and exists (
+           select 1 from holds held
+           where held.paddle_id = $1 and held.status = 'authorized' and held.created_at < pending.created_at
+         )
      ) as pending`,
     [paddleId, RAISE_WINDOW_MS],
   );
