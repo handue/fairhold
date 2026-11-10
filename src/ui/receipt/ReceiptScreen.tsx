@@ -10,7 +10,7 @@ import { CornerOrb } from "../CornerOrb";
 import { isDrawingKey } from "../drawings/drawings";
 import { LotIllustration } from "../drawings/LotIllustration";
 import { EventNav } from "../EventNav";
-import { formatClockTime, formatLotNumber, formatPaddleNumber, formatUsd } from "../format";
+import { formatClockTime, formatLotNumber, formatPaddleNumber, formatUsd, keepTogether } from "../format";
 import { LockIcon } from "../icons";
 import { LiveRefresh } from "../live/LiveStream";
 import { Money } from "../Money";
@@ -21,7 +21,7 @@ import { lotClockTime } from "../paddle/time";
 import type { GuestLinks } from "../routes";
 import { StatusPill } from "../StatusPill";
 
-import { bidByLine, captionLines, charityLines, glimSay, receiptBubble, receiptDate, receiptTitle } from "./copy";
+import { bidByLine, captionLines, charityLines, glimSay, receiptBubble, receiptDateParts, receiptTitle } from "./copy";
 import { receiptPdfHref } from "./receipt-href";
 
 /** "Sandbox demo · not a tax document": on the receipt's first line, in every state (design/25). */
@@ -57,19 +57,26 @@ export function ReceiptScreen({ view, links }: { view: ReceiptView; links: Guest
         power={<OutcomePill phase={phase} payCents={view.payCents} releaseCents={view.releaseCents} />}
       />
 
-      <div className="mx-auto max-w-1344 px-48 pt-32 pb-120 tabular-nums">
-        <div className={cn("grid grid-cols-[minmax(0,1fr)_480px] gap-x-48", wonNothing ? "items-start" : "items-stretch")}>
-          <main>
+      <div className="mx-auto max-w-1344 px-48 pt-32 pb-120 tabular-nums max-desk:px-32 max-desk:pb-0 max-md:px-16 max-md:pt-24">
+        <div
+          className={cn(
+            "grid grid-cols-[minmax(0,1fr)_480px] gap-x-48 max-desk:gap-x-40 max-xl:items-start max-lg:grid-cols-1",
+            wonNothing ? "items-start" : "items-stretch",
+          )}
+        >
+          <main className="max-lg:contents">
             <span className="block font-mono text-11.5 leading-16 tracking-caps text-muted uppercase">Bidding closed</span>
-            <h1 className="mt-8 text-34 leading-40 font-semibold tracking-title whitespace-nowrap">Thank you, {view.viewer.firstName}.</h1>
-            <p className="mt-8 flex items-center gap-8 text-16 leading-24 whitespace-nowrap text-ink2">
-              <HeartLineIcon size={15} className="flex-none text-muted" />
+            <h1 className="mt-8 text-34 leading-40 font-semibold tracking-title whitespace-nowrap max-md:text-28 max-md:leading-34 max-md:text-balance max-md:whitespace-normal">
+              Thank you, {view.viewer.firstName}.
+            </h1>
+            <p className="mt-8 flex items-center gap-8 text-16 leading-24 whitespace-nowrap text-ink2 max-md:items-start max-md:text-pretty max-md:whitespace-normal">
+              <HeartLineIcon size={15} className="flex-none text-muted max-md:mt-5" />
               {wonNothing
                 ? `Your bids helped raise the total for ${view.event.charityName}.`
                 : `Your winning bids support ${view.event.charityName}.`}
             </p>
 
-            <div className="mt-32 grid grid-cols-2 gap-x-24 gap-y-32">
+            <div className="mt-32 grid grid-cols-2 gap-x-24 gap-y-32 max-xl:grid-cols-1 max-lg:order-2 max-lg:grid-cols-2 max-md:mt-24 max-md:grid-cols-1 max-md:gap-y-24">
               {(wonNothing ? view.notWon : view.won).map((lot) => (
                 <LotCard key={lot.lotId} lot={lot} won={!wonNothing} phase={phase} timeZone={tz} />
               ))}
@@ -78,34 +85,45 @@ export function ReceiptScreen({ view, links }: { view: ReceiptView; links: Guest
             <ReceiptRows view={view} timeZone={tz} />
           </main>
 
-          <ReceiptPanel view={view} links={links} />
+          <ReceiptPanel view={view} links={links} note={bubble} />
         </div>
 
-        <p className="mt-20 flex items-center gap-8 text-12.5 leading-18 text-ink2">
-          <LockIcon size={15} />
+        <p className="mt-20 flex items-center gap-8 text-12.5 leading-18 text-ink2 max-md:items-start max-md:text-pretty">
+          <LockIcon size={15} className="flex-none max-md:mt-1" />
           {phase === "paid" ? "As promised, you paid only for the lots you won." : "As promised, you pay only for the lots you win."}
         </p>
       </div>
 
-      <CornerOrb bubble={bubble ?? undefined} />
+      {/*
+        Below 1440 Glim closes the page, under the receipt, rather than resting on its buttons. Below 1024,
+        where that end is past every lot, the receipt card says the bubble's news itself (ReceiptNote).
+      */}
+      <CornerOrb bubble={bubble ? { ...bubble, phone: "none" } : undefined} placement="page-end" />
     </>
   );
 }
 
-/** 11's nav pill: what was paid and released, or what will be. */
+/**
+ * 11's nav pill: what was paid and released, or what will be. On a phone it keeps the two figures
+ * beside the tabs, as bidding power does, and the receipt right under it names them.
+ */
 function OutcomePill({ phase, payCents, releaseCents }: { phase: ReceiptPhase; payCents: number; releaseCents: number }) {
   const settled = phase === "paid" || phase === "released";
+  const paid = settled ? "Paid" : "To pay";
+  const released = settled ? "Released" : "To release";
   return (
-    <div className="flex h-40 items-center gap-10 rounded-full bg-ink px-14 font-mono text-13 text-white">
+    <div className="flex h-40 items-center gap-10 rounded-full bg-ink px-14 font-mono text-13 text-white max-desk:flex-none max-desk:whitespace-nowrap">
       <span className="flex items-center gap-10">
-        <small className="text-10.5 tracking-label text-on-ink-muted uppercase">{settled ? "Paid" : "To pay"}</small>
+        <small className="text-10.5 tracking-label text-on-ink-muted uppercase max-md:hidden">{paid}</small>
+        <span className="sr-only hidden max-md:inline">{paid}</span>
         <b className="font-medium">
           <Money cents={payCents} />
         </b>
       </span>
       <span className="text-on-ink-muted">·</span>
       <span className="flex items-center gap-10">
-        <small className="text-10.5 tracking-label text-on-ink-muted uppercase">{settled ? "Released" : "To release"}</small>
+        <small className="text-10.5 tracking-label text-on-ink-muted uppercase max-md:hidden">{released}</small>
+        <span className="sr-only hidden max-md:inline">{released}</span>
         <b className="font-medium text-lime">
           <Money cents={releaseCents} />
         </b>
@@ -132,7 +150,7 @@ function LotCard({ lot, won, phase, timeZone }: { lot: ReceiptLot; won: boolean;
   const by = bidByLine(lot, won);
   return (
     <article>
-      <div className="relative flex h-176 items-center justify-center rounded-20 bg-stone-tile">
+      <div className="relative flex h-176 items-center justify-center rounded-20 bg-stone-tile max-md:h-144">
         {won ? (
           <StatusPill status="winning" edge className="absolute top-12 left-12">
             {at ? `Won at ${at}` : "Won"}
@@ -150,22 +168,29 @@ function LotCard({ lot, won, phase, timeZone }: { lot: ReceiptLot; won: boolean;
         <span className="block font-mono text-11 leading-14 tracking-caps text-muted uppercase">
           Lot {formatLotNumber(lot.number)} · {CATEGORY_LABELS[lot.category]}
         </span>
-        <h3 className={cn("mt-6 text-[17px] leading-24 font-semibold tracking-snug whitespace-nowrap", !won && "text-muted")}>{lot.title}</h3>
+        <h3
+          className={cn(
+            "mt-6 text-[17px] leading-24 font-semibold tracking-snug whitespace-nowrap max-md:text-balance max-md:whitespace-normal",
+            !won && "text-muted",
+          )}
+        >
+          {lot.title}
+        </h3>
         <p className="mt-8 flex items-baseline gap-8">
           <b className="font-mono text-[24px] leading-32 font-medium tracking-[-.03em]">
             <Money cents={lot.paidCents} />
           </b>
           <span className="text-13.5 text-muted">{won && phase === "pending" ? "to pay" : "paid"}</span>
         </p>
-        <p className="mt-8 flex h-22 items-center gap-8 text-13.5 whitespace-nowrap text-ink2">
-          {by?.glim && <Orb size={22} />}
+        <p className="mt-8 flex h-22 items-center gap-8 text-13.5 whitespace-nowrap text-ink2 max-md:h-auto max-md:min-h-22 max-md:leading-20 max-md:whitespace-normal">
+          {by?.glim && <Orb size={22} className="max-md:flex-none max-md:self-start" />}
           {by && (
             <span>
               <Amount parts={by.parts} />
             </span>
           )}
         </p>
-        <p className="mt-16 flex justify-between border-t border-line pt-12 text-12.5 leading-18 whitespace-nowrap text-muted">
+        <p className="mt-16 flex justify-between border-t border-line pt-12 text-12.5 leading-18 whitespace-nowrap text-muted max-md:flex-wrap max-md:gap-x-12">
           {won ? (
             <>
               {lot.estimatedValueCents === null ? (
@@ -213,10 +238,10 @@ function ReceiptRows({ view, timeZone }: { view: ReceiptView; timeZone: string }
   const others = wonNothing ? [] : view.notWon;
   if (!say && others.length === 0) return null;
   return (
-    <div className="mt-24">
+    <div className="mt-24 max-lg:order-3">
       {say && view.glim && (
-        <div className="flex items-center gap-24 border-t border-line py-16 last:border-b">
-          <div className="flex w-190 flex-none items-center gap-12">
+        <div className="flex items-center gap-24 border-t border-line py-16 last:border-b max-xl:flex-col max-xl:items-start max-xl:gap-12">
+          <div className="flex w-190 flex-none items-center gap-12 max-xl:w-auto">
             <Orb size={38} />
             <div>
               <b className="block text-15 leading-20 font-semibold">Glim</b>
@@ -226,24 +251,27 @@ function ReceiptRows({ view, timeZone }: { view: ReceiptView; timeZone: string }
               </span>
             </div>
           </div>
-          <p className="text-15 leading-22">
-            <span className="block whitespace-nowrap">{say[0]}</span>
-            {say[1] && <span className="block whitespace-nowrap">{say[1]}</span>}
+          <p className="text-15 leading-22 max-xl:text-pretty">
+            <span className="block whitespace-nowrap max-xl:whitespace-normal">{say[0]}</span>
+            {say[1] && <span className="block whitespace-nowrap max-xl:whitespace-normal">{say[1]}</span>}
           </p>
         </div>
       )}
       {others.map((lot) => (
-        <div key={lot.lotId} className="flex items-center gap-24 border-t border-line py-16 whitespace-nowrap last:border-b">
-          <div className="flex w-190 flex-none items-center gap-12">
+        <div
+          key={lot.lotId}
+          className="flex items-center gap-24 border-t border-line py-16 whitespace-nowrap last:border-b max-xl:gap-16 max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-16 max-md:gap-y-10 max-md:whitespace-normal"
+        >
+          <div className="flex w-190 flex-none items-center gap-12 max-xl:w-auto max-md:col-[1/2] max-md:row-[1/2]">
             <StatusPill status="closed">Not won</StatusPill>
           </div>
-          <div>
+          <div className="max-md:col-[1/2] max-md:row-[2/3] max-md:min-w-0">
             <span className="block font-mono text-11 leading-14 tracking-caps text-muted uppercase">
               Lot {formatLotNumber(lot.number)} · {CATEGORY_LABELS[lot.category]}
             </span>
             <span className="mt-4 block text-14 leading-20 font-medium text-ink2">{lot.title}</span>
           </div>
-          <p className="ml-auto text-right">
+          <p className="ml-auto text-right max-md:col-[2/3] max-md:row-[1/3] max-md:self-center max-md:whitespace-nowrap">
             <b className="block text-14 leading-20 font-semibold">Never charged</b>
             {lot.closedAt !== null && (
               <span className="mt-2 block text-12.5 leading-18 text-muted">Closed at {lotClockTime(lot.closedAt, timeZone)}</span>
@@ -257,7 +285,7 @@ function ReceiptRows({ view, timeZone }: { view: ReceiptView; timeZone: string }
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <p className="flex h-20 items-center justify-between text-13 whitespace-nowrap text-muted [&+&]:mt-4">
+    <p className="flex h-20 items-center justify-between text-13 whitespace-nowrap text-muted [&+&]:mt-4 max-md:h-auto max-md:min-h-20 max-md:flex-wrap max-md:gap-x-12 max-md:[&>:last-child]:ml-auto">
       <span>{label}</span>
       {children}
     </p>
@@ -266,7 +294,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 
 const mono = "font-mono text-12.5 text-ink";
 
-function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks }) {
+function ReceiptPanel({ view, links, note }: { view: ReceiptView; links: GuestLinks; note: { title: string; body: string } | null }) {
   const { phase } = view;
   const tz = view.event.timeZone;
   const paid = phase === "paid";
@@ -281,16 +309,17 @@ function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks })
   const noRelease = view.releaseCents === 0;
 
   return (
-    <aside className="flex flex-col rounded-24 bg-surface px-32 py-28">
+    <aside className="flex flex-col rounded-24 bg-surface px-32 py-28 max-lg:order-1 max-lg:mt-28 max-md:mt-24 max-md:px-20 max-md:py-24 max-sm:px-16">
       <div className="font-mono text-11.5 tracking-caps text-muted uppercase">
-        <p className="flex h-26 items-center justify-between leading-26">
+        {/* On a phone the stamp comes first, on a line of its own: still the receipt's first line. */}
+        <p className="flex h-26 items-center justify-between leading-26 max-md:h-auto max-md:flex-col-reverse max-md:items-start max-md:gap-y-12">
           <span className="font-medium text-ink">{receiptTitle(phase, view.receipt?.number ?? null)}</span>
-          <span className="inline-flex h-26 items-center rounded-full bg-ink px-11 text-11 font-medium tracking-status whitespace-nowrap text-white">
+          <span className="inline-flex h-26 items-center rounded-full bg-ink px-11 text-11 font-medium tracking-status whitespace-nowrap text-white max-sm:px-9 max-sm:text-10.5">
             {SANDBOX_STAMP}
           </span>
         </p>
-        <p className="mt-4 flex justify-between leading-16">
-          <span>{receiptDate(dated, tz, "short")}</span>
+        <p className="mt-4 flex justify-between leading-16 max-md:flex-wrap max-md:gap-x-12 max-md:gap-y-2">
+          <ReceiptDate at={dated} timeZone={tz} />
           <span>
             Paddle {formatPaddleNumber(view.viewer.paddleNumber)} · {view.viewer.firstName}
           </span>
@@ -303,7 +332,7 @@ function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks })
             {phase === "released" ? <OpenLockIcon size={18} /> : <LockIcon size={18} />}
           </span>
           <div>
-            <b className="block text-16 leading-22 font-semibold">
+            <b className="block text-16 leading-22 font-semibold max-md:text-pretty">
               {formatUsd(view.hold.cents)} held with PayPal{holdAt}
             </b>
             <span className="mt-2 block text-13 leading-18 text-muted">
@@ -317,14 +346,15 @@ function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks })
         </div>
       )}
 
-      <div className="mt-24 flex items-baseline justify-between whitespace-nowrap">
-        <span className="flex items-baseline gap-8 text-14 text-muted">
-          <b className="font-mono text-[48px] leading-52 font-medium tracking-display text-ink">
+      {/* On a phone what was released goes under what was paid, over its end of the bar. */}
+      <div className="mt-24 flex items-baseline justify-between whitespace-nowrap max-md:flex-col max-md:items-stretch max-md:gap-y-4">
+        <span className="flex items-baseline gap-8 text-14 text-muted max-md:flex-wrap">
+          <b className="font-mono text-[48px] leading-52 font-medium tracking-display text-ink max-md:text-40 max-md:leading-44">
             <Money cents={view.payCents} />
           </b>
           {settledFigures ? "paid with PayPal" : "to pay with PayPal"}
         </span>
-        <span className="flex items-baseline gap-8 text-14 text-muted">
+        <span className="flex items-baseline gap-8 text-14 text-muted max-md:self-end">
           <b className="font-mono text-[24px] leading-28 font-medium tracking-[-.03em] text-ink">
             <Money cents={view.releaseCents} />
           </b>
@@ -345,11 +375,11 @@ function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks })
           <i className="block h-full rounded-[5px] bg-lime inset-ring inset-ring-lime-edge" style={{ flex: `${view.releaseCents} 1 0` }} />
         )}
       </div>
-      <p className="mt-12 text-13 leading-20 whitespace-nowrap text-ink2">
+      <p className="mt-12 text-13 leading-20 whitespace-nowrap text-ink2 max-md:text-pretty max-md:whitespace-normal">
         <span className="block">{capFirst}</span>
         <span className="block">{capSecond}</span>
       </p>
-      <p className="mt-4 text-12.5 leading-18 whitespace-nowrap text-muted">
+      <p className="mt-4 text-12.5 leading-18 whitespace-nowrap text-muted max-md:text-pretty max-md:whitespace-normal">
         {phase === "pending" || phase === "release_pending"
           ? "Nothing for you to do. This page updates on its own."
           : "Some banks take a few days to remove a released hold."}
@@ -363,11 +393,13 @@ function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks })
             </b>
             tax-deductible
           </p>
-          <p className="mt-8 text-13 leading-20 whitespace-nowrap text-ink2">Only what you pay above an item’s estimated value is tax-deductible.</p>
+          <p className="mt-8 text-13 leading-20 whitespace-nowrap text-ink2 max-md:text-pretty max-md:whitespace-normal">
+            Only what you pay above an item’s estimated value is tax-deductible.
+          </p>
           {paid && (
-            <p className="mt-8 text-12 leading-18 text-muted">
-              <span className="block whitespace-nowrap">{charityFirst}</span>
-              {charitySecond && <span className="block whitespace-nowrap">{charitySecond}</span>}
+            <p className="mt-8 text-12 leading-18 text-muted max-md:text-pretty">
+              <span className="block whitespace-nowrap max-md:whitespace-normal">{charityFirst}</span>
+              {charitySecond && <span className="block whitespace-nowrap max-md:whitespace-normal">{charitySecond}</span>}
             </p>
           )}
         </div>
@@ -401,12 +433,12 @@ function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks })
                 <span className={mono}>{view.event.statementLabel}</span>
               </Detail>
             )}
-            <div className="mt-20 flex items-center gap-8">
+            <div className="mt-20 flex items-center gap-8 max-md:flex-col max-md:items-stretch">
               {paid ? (
                 <>
                   <Link
                     href={receiptPdfHref(links)}
-                    className="flex h-48 flex-1 items-center justify-between gap-10 rounded-16 bg-lime pr-16 pl-20 text-15 font-semibold whitespace-nowrap text-ink"
+                    className="flex h-48 flex-1 items-center justify-between gap-10 rounded-16 bg-lime pr-16 pl-20 text-15 font-semibold whitespace-nowrap text-ink max-md:flex-none"
                   >
                     Download receipt
                     <span className="flex items-center gap-10">
@@ -416,7 +448,7 @@ function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks })
                   </Link>
                   <a
                     href={emailHref(view)}
-                    className="flex h-48 items-center gap-8 pl-16 text-14 font-medium whitespace-nowrap text-ink"
+                    className="flex h-48 items-center gap-8 pl-16 text-14 font-medium whitespace-nowrap text-ink max-md:justify-center max-md:rounded-16 max-md:bg-white max-md:pl-0"
                   >
                     <MailIcon size={17} />
                     Email me a copy
@@ -426,7 +458,7 @@ function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks })
                 <span
                   role="button"
                   aria-disabled="true"
-                  className="flex h-48 flex-1 items-center justify-between gap-10 rounded-16 bg-white pr-16 pl-20 text-15 font-semibold whitespace-nowrap text-muted"
+                  className="flex h-48 flex-1 items-center justify-between gap-10 rounded-16 bg-white pr-16 pl-20 text-15 font-semibold whitespace-nowrap text-muted max-md:flex-none"
                 >
                   Download receipt
                   <span className="flex items-center gap-10">
@@ -439,7 +471,31 @@ function ReceiptPanel({ view, links }: { view: ReceiptView; links: GuestLinks })
           </>
         )}
       </div>
+      {note && <ReceiptNote note={note} />}
     </aside>
+  );
+}
+
+/** "Tue, November 10, 2026 · 9:30 PM", with the time kept whole when the line wraps. */
+function ReceiptDate({ at, timeZone }: { at: number; timeZone: string }) {
+  const [date, time] = receiptDateParts(at, timeZone, "short");
+  return <span>{`${date} · ${keepTogether(time)}`}</span>;
+}
+
+/**
+ * Below 1024: Glim's corner note (the pickup note, or what comes next) as the receipt's last line, in
+ * the same words, where a guest at the front desk is looking. The corner closes the page with the orb
+ * alone there. From 1024 the bubble says it, beside the receipt.
+ */
+function ReceiptNote({ note }: { note: { title: string; body: string } }) {
+  return (
+    <div role="note" className="mt-20 hidden items-start gap-12 border-t border-ink/8 pt-20 max-lg:flex">
+      <Orb size={26} />
+      <p className="min-w-0 text-13 leading-18 text-muted">
+        <b className="block text-13.5 leading-20 font-semibold text-ink">{note.title}</b>
+        <span className="mt-2 block">{note.body}</span>
+      </p>
+    </div>
   );
 }
 

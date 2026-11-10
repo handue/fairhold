@@ -10,6 +10,8 @@ import {
   formatUsd,
   formatWeekdayTime,
   isClosingSoon,
+  keepTogether,
+  wrapAtSeparators,
 } from "./format";
 
 const MINUTE = 60_000;
@@ -83,5 +85,20 @@ describe("small labels", () => {
     expect(formatBidCount(0)).toBe("No bids yet");
     expect(formatBidCount(1)).toBe("1 bid");
     expect(formatBidCount(12)).toBe("12 bids");
+  });
+});
+
+describe("line breaks", () => {
+  it("keeps a time or a phrase whole with no-break spaces", () => {
+    expect(keepTogether("9:30 PM")).toBe("9:30\u00a0PM");
+    expect(keepTogether("Estimated value $600")).toBe("Estimated\u00a0value\u00a0$600");
+    expect(keepTogether("Lot")).toBe("Lot");
+  });
+
+  it("wraps a dotted line only after its separators, each dot with the part before it", () => {
+    const line = wrapAtSeparators("Private 25-minute gala · 24 lots · PayPal sandbox, no real money");
+    expect(line).toBe("Private\u00a025-minute\u00a0gala\u00a0· 24\u00a0lots\u00a0· PayPal\u00a0sandbox,\u00a0no\u00a0real\u00a0money");
+    // The same words: only the kind of space changes.
+    expect(line.replaceAll("\u00a0", " ")).toBe("Private 25-minute gala · 24 lots · PayPal sandbox, no real money");
   });
 });

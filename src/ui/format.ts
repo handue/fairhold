@@ -1,5 +1,28 @@
 /** Display formatting for the guest screens. Money is integer cents; instants are epoch milliseconds. */
 
+const NO_BREAK_SPACE = "\u00a0";
+
+/**
+ * `text` with its spaces made no-break spaces, so a line that wraps never breaks inside it ("9:30 PM",
+ * "Estimated value $600"). A no-break space draws exactly as a space (checked at 1440, native 2x), so a
+ * line that doesn't wrap renders as before, and it stays one text node: an inline box mid-line would
+ * move the glyphs after it by a fraction of a pixel.
+ */
+export function keepTogether(text: string): string {
+  return text.replaceAll(" ", NO_BREAK_SPACE);
+}
+
+/**
+ * "Private 25-minute gala · 24 lots · …" that wraps only after a separator: each part kept together,
+ * and each dot kept with the part before it, so no line starts with "·" and no part splits.
+ */
+export function wrapAtSeparators(text: string): string {
+  return text
+    .split(" · ")
+    .map(keepTogether)
+    .join(`${NO_BREAK_SPACE}· `);
+}
+
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
 

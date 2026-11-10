@@ -21,6 +21,12 @@
 .ledger-grid .ag-header-cell-comp-wrapper {
   overflow: visible;
 }
+/* Below 1024 Top lots' "Estimated value" takes two lines in its narrower column (TopLotsGrid's headerClass). */
+.ledger-grid .ledger-header-wraps .ag-header-cell-text {
+  line-height: 14px;
+  text-align: right;
+  white-space: normal;
+}
 /* A header wider than its column, as Glim's is, runs on to the right. */
 .ledger-grid .ag-header-cell:not(.ag-right-aligned-header) .ag-cell-label-container {
   flex-direction: row;
@@ -90,13 +96,15 @@
   font-size: 13px;
 }
 
-/* A page's last row sits on the totals row's own top border. */
-.ledger-grid .ag-grid-scrolling-container .ag-row:last-child > .ag-grid-scrolling-cells {
+/* A page's last row sits on the totals row's own top border; so does its paddle when it is pinned. */
+.ledger-grid .ag-grid-scrolling-container .ag-row:last-child > .ag-grid-scrolling-cells,
+.ledger-grid .ag-grid-scrolling-container .ag-row:last-child > .ag-grid-pinned-left-cells {
   border-bottom: 0;
 }
 
 /* The pinned totals row: 47px under its container's border, with no border of its own. */
-.ledger-grid .ag-row-pinned > .ag-grid-scrolling-cells {
+.ledger-grid .ag-row-pinned > .ag-grid-scrolling-cells,
+.ledger-grid .ag-row-pinned > .ag-grid-pinned-left-cells {
   border-bottom: 0;
 }
 .ledger-grid .ag-row-pinned .ag-cell {
@@ -196,6 +204,21 @@
   border: 1px solid var(--color-ink);
   color: var(--color-ink);
   cursor: pointer;
+}
+/*
+ * On a phone Retry and Ask again are a thumb's 40px tall: the same 24px pill, drawn as an inset ring
+ * inside a transparent border, so the row keeps its look and the tap lands.
+ */
+@media (width < 48rem) {
+  .ledger-grid .ledger-retry {
+    background-clip: padding-box;
+    border: 0 solid transparent;
+    border-block-width: 8px;
+    border-radius: 12px / 20px;
+    box-shadow: inset 0 0 0 1px var(--color-ink);
+    height: 40px;
+    min-width: 40px;
+  }
 }
 /* A failed check's pill sits where the hold's amount was, running into the cell's left padding. */
 .ledger-grid .ag-right-aligned-cell .ledger-pill {

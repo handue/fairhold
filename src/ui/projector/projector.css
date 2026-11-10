@@ -411,3 +411,319 @@
   margin-top: 2px;
   line-height: 1.4;
 }
+
+/*
+ * Phones, and tablets held upright: the 1440 x 900 board scaled to fit would set its smallest type
+ * at 4 to 7px, so the same board flows down the screen instead and the page scrolls. The order is
+ * the board's reading order: the event, the two figures, the lots, then how to join. Upright tablets
+ * up to 1024 wide (a 12.9-inch iPad included) flow too; landscape screens from 768 wide (and every
+ * projector) keep the scaled board.
+ */
+@media (width < 48rem), (width <= 64rem) and (orientation: portrait) {
+  html:has(.fh-projector-stage) {
+    background: var(--color-ink);
+  }
+  .fh-projector-stage {
+    position: relative;
+    inset: auto;
+    display: block;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .fh-projector {
+    display: flex;
+    flex-direction: column;
+    width: auto;
+    height: auto;
+    min-height: 100dvh;
+    padding: 32px 32px calc(32px + env(safe-area-inset-bottom));
+    overflow: visible;
+    transform: none;
+  }
+
+  .fh-projector .top {
+    position: static;
+    height: auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 24px;
+  }
+  .fh-projector .brand {
+    flex-wrap: wrap;
+    row-gap: 12px;
+    min-width: 0;
+    white-space: normal;
+  }
+  /* The marker often wraps under the name; the brand's 12px gap spaces it either way, so it starts at the gutter. */
+  .fh-projector .sbx {
+    margin-left: 0;
+  }
+
+  .fh-projector .board {
+    position: static;
+    width: auto;
+    margin-top: 40px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: none;
+    column-gap: 32px;
+  }
+  .fh-projector .raised {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .fh-projector .total {
+    font-size: 80px;
+  }
+  .fh-projector .cause,
+  .fh-projector .ttl,
+  .fh-projector .row h3 {
+    white-space: normal;
+    text-wrap: balance;
+  }
+  .fh-projector .ends {
+    grid-column: 2;
+    grid-row: 1;
+    padding-top: 0;
+    align-items: flex-end;
+  }
+  .fh-projector .clock {
+    font-size: 56px;
+    line-height: 80px;
+    margin-top: 7.5px;
+  }
+  .fh-projector .lh {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 48px;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    padding: 0 24px;
+  }
+  .fh-projector .now {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+  .fh-projector .rows {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+
+  .fh-projector .rule {
+    position: static;
+    margin-top: 40px;
+    flex: none;
+  }
+  .fh-projector .band {
+    position: static;
+    display: flex;
+    align-items: flex-start;
+    gap: 28px;
+    width: auto;
+    height: auto;
+    margin-top: 24px;
+  }
+  .fh-projector .qr {
+    position: static;
+    flex: none;
+  }
+  .fh-projector .join {
+    position: static;
+    min-width: 0;
+    padding-top: 14px;
+  }
+  .fh-projector .call,
+  .fh-projector .trust span {
+    white-space: normal;
+  }
+  .fh-projector .trust span {
+    text-wrap: balance;
+  }
+
+  /* Glim speaks for the gala at the end of the page, at its own size. */
+  .fh-projector .buddy {
+    position: static;
+    align-self: flex-end;
+    margin-top: 32px;
+    transform: none;
+  }
+}
+
+/* Phones: one column, the figures at phone scale, and the first lot's drawing across the top of its card. */
+@media (width < 48rem) {
+  .fh-projector {
+    padding: 20px 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  .fh-projector .eyebrow {
+    font-size: 11px;
+    line-height: 14px;
+  }
+  .fh-projector .eyebrow.sect {
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .fh-projector .top {
+    gap: 12px;
+  }
+  .fh-projector .brand {
+    gap: 10px;
+    font-size: 20px;
+  }
+  .fh-projector .brand svg {
+    width: 26px;
+    height: 26px;
+    margin-left: -4px;
+  }
+  .fh-projector .live,
+  .fh-projector .sbx {
+    margin-left: 0;
+    height: 30px;
+    padding: 0 12px;
+    font-size: 11px;
+  }
+  .fh-projector .live b {
+    width: 7px;
+    height: 7px;
+  }
+
+  .fh-projector .board {
+    margin-top: 28px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fh-projector .total {
+    margin-top: 6px;
+    font-size: 56px;
+  }
+  .fh-projector .cause {
+    margin-top: 8px;
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .fh-projector .ends {
+    grid-column: 1;
+    grid-row: 2;
+    margin-top: 28px;
+    align-items: flex-start;
+  }
+  .fh-projector .clock {
+    margin-top: 8px;
+    font-size: 40px;
+    line-height: 40px;
+  }
+  .fh-projector .lh {
+    grid-row: 3;
+    margin-top: 36px;
+    padding: 0;
+  }
+  .fh-projector .now {
+    grid-row: 4;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 12px;
+    padding: 16px;
+    border-radius: 20px;
+  }
+  .fh-projector .rows {
+    grid-row: 5;
+  }
+  .fh-projector .tile {
+    width: auto;
+    height: 112px;
+    border-radius: 16px;
+  }
+  .fh-projector .tile svg {
+    top: -3px;
+  }
+  .fh-projector .nums {
+    margin-top: 6px;
+    gap: 16px;
+  }
+  .fh-projector .cdl {
+    font-size: 40px;
+    line-height: 40px;
+  }
+  .fh-projector .bidl {
+    font-size: 32px;
+    line-height: 36px;
+  }
+  .fh-projector .tr {
+    gap: 12px;
+  }
+  .fh-projector .ttl {
+    font-size: 20px;
+    line-height: 26px;
+  }
+  .fh-projector .cnt {
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .fh-projector .who {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    height: auto;
+    min-height: 26px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .fh-projector .pip {
+    gap: 8px;
+  }
+  .fh-projector .now .who {
+    margin-top: 8px;
+  }
+
+  .fh-projector .row {
+    grid-template-columns: minmax(84px, max-content) minmax(0, 1fr) auto;
+    column-gap: 14px;
+    row-gap: 2px;
+    padding: 14px 0 12px;
+  }
+  .fh-projector .cd,
+  .fh-projector .bid {
+    font-size: 28px;
+    line-height: 30px;
+  }
+  .fh-projector .row h3 {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .fh-projector .rule {
+    margin-top: 28px;
+  }
+  .fh-projector .band {
+    gap: 16px;
+    margin-top: 20px;
+  }
+  .fh-projector .qr {
+    width: 96px;
+    height: 96px;
+    border-radius: 16px;
+  }
+  .fh-projector .qr svg {
+    width: 96px;
+    height: 96px;
+  }
+  .fh-projector .join {
+    padding-top: 2px;
+  }
+  .fh-projector .call {
+    font-size: 18px;
+    line-height: 24px;
+    text-wrap: balance;
+  }
+  .fh-projector .trust {
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .fh-projector .trust svg {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+  }
+  .fh-projector .buddy {
+    margin-top: 24px;
+  }
+}

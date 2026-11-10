@@ -8,6 +8,7 @@ Owner area: design system and the guest pages' UI. Ported from the approved mock
 - Utilities: `bg-stone-tile` (lot tiles), `bg-orb` (Glim's body), `non-scaling-stroke` (lot drawings).
 - The base line height is `normal`, as in the mockups (Tailwind's preflight would make it 1.5).
 - Mono amounts go through `<Money>`, which tightens the thousands comma as every approved screen does.
+- Widths: every board is 1440 wide, and at 1440 and up each page renders pixel for pixel as approved. Narrower layouts use max-width variants only: `max-desk:` (below 1440, laptops), `max-xl:` (below 1280), `max-lg:` (below 1024, tablets), `max-md:` (below 768, phones, drawn at 375 and checked down to 320) and `max-sm:` (below 640). An unprefixed class never changes for a narrower screen. Phones also have type sizes 18 to 48 for display figures that scale down. An arbitrary `max-[Npx]:` variant sorts before the theme's, so it loses to `max-md:` on the same property; prefer the named ones.
 
 ## Components
 
@@ -27,6 +28,16 @@ Countdowns and "2 min ago" run on the server's clock through `ServerClockProvide
 - `event/EventFooter.tsx`: "Riverside Shelter Gala · runs on Fairhold", as 16b draws it (only 16b uses it so far).
 - `receipt/receipt-href.ts`: the one way to 11 and 25b, used by the nav, 08's band after the close, and 10.
 - Spinners: `power/icons.tsx`'s `SpinnerIcon` is design/20's mark; `glim/marks.tsx` (`SpinnerMark`, 10px in the header), `organizer/Spinner.tsx` (its own `ledger-spin` animation) and `paddle/icons.tsx` draw the same ring at their own sizes.
+
+## Below 1440
+
+- `EventNav` (05, 08, 09, 10, 11) and `OrganizerNav` (12, 28) share its class constants (`NAV_BAR` and the rest). From 1024 the bar is one row with 32px gutters; below 1024 it wraps into two rows, the gala's name over the status pill (with the Sandbox demo marker beside it) and the paddle pill on the right, then the links as 48px tabs with bidding power on the right. On a phone the pills go compact ("Closes 9:30 PM", "$180 / $500", the paddle number alone) and the labels stay for screen readers. It is 119px tall below 1024 (143 at 320 on a demo gala).
+- `CornerOrb`: 68 at right 32, bottom 28 from 768 up, as approved. On a phone the orb is 56 at right 16, bottom 16. A bubble's `phone` setting says what it keeps on narrow screens: the invitation (`GLIM_INVITATION`, `phone: "none"`) leaves the orb on its own below 1024, since 08's band, 05's "Let Glim bid on this lot" and 10's "Talk to Glim" make the same offer in the page; 09's hint (`phone: "title"`) keeps its question on a phone. `placement="page-end"` (05, 09, 11) closes the page with the corner below 1440 instead of resting it over the page, where it covered the one primary action on a laptop's first screen. Pages with a floating corner leave 104 to 136px at their end so the last row scrolls clear.
+- Safe areas: the `env(safe-area-inset-*)` terms on the pinned parts resolve to 0 today. iOS reports the insets only with `viewport-fit=cover`, which the root layout leaves out (Next sends `width=device-width, initial-scale=1`), so the page stays inside the safe area in landscape. Adding cover would need side insets on every gutter.
+- `demo/DemoGuide`: the approved card from 1280 up on a screen at least 860 tall (from 1440 on any); elsewhere a 44px bar, "Demo guide · Step 1 of 5", that opens the steps above it. On a phone from 360 wide the bar sits beside Glim's orb, on its row; at 320 above it.
+- `demo/RoleMenu`: modal on a touch screen, so the tap that closes the menu lands on nothing behind it; the menu and its card scroll within the screen when it is short (a phone held sideways).
+- `glim/GlimPanel`: a full-screen sheet on a phone that follows the visual viewport, so the input stays above the keyboard; the floating card from 768 up, stopping 16px under the nav below 1440. On a phone or a touch screen the input takes focus on open only for 05's "Bid on … up to $" prefill, so the keyboard doesn't cover Glim's greeting and quick replies.
+- Every page is checked at 320, 375, 430, 768, 1024, 1280 and 1366 by `tests/e2e/responsive-*.spec.ts` (helpers in `tests/e2e/support/responsive.ts`), and the whole path on a phone by `tests/e2e/golden-path-phone.spec.ts`. docs/status/day3.md, "Responsive layouts", has the design per page.
 
 ## Fixture and visual checks
 

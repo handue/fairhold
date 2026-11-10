@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useId, useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import { AlertIcon } from "../demo/icons";
+import { wrapAtSeparators } from "../format";
 import { ArrowRightIcon, LockIcon } from "../icons";
 
 import { joinEventAction, startDemoAction } from "./actions";
@@ -66,17 +67,20 @@ function Hydrated({ state }: { state: EntryFormState }) {
   return <input type="hidden" name={HYDRATED_FIELD} value={hydrated ? "1" : ""} />;
 }
 
-/** 16 and 16c: one lime button that starts a private demo gala, and the line under it. */
+/** 16 and 16c: one lime button that starts a private demo gala, and the line under it. On a phone both fill the width. */
 export function StartDemoForm({ label, meta }: { label: string; meta: string }) {
   const [state, action, pending] = useActionState(startDemoAction, ENTRY_IDLE);
   const timeZone = useTimeZone();
   return (
-    <form action={action} onSubmit={(event) => pending && event.preventDefault()} className="w-480 text-left">
+    <form action={action} onSubmit={(event) => pending && event.preventDefault()} className="w-480 text-left max-md:w-full">
       <input type="hidden" name="timeZone" value={timeZone} />
       <Hydrated state={state} />
       <LimeSubmit pending={pending || state.href !== null}>{label}</LimeSubmit>
       <FormError message={state.error} className="mt-12" />
-      <p className="mt-16 text-12.5 leading-18 whitespace-nowrap text-ink2">{meta}</p>
+      {/* On a phone it wraps only after a "·", each part whole. */}
+      <p className="mt-16 text-12.5 leading-18 whitespace-nowrap text-ink2 max-md:mt-12 max-md:whitespace-normal">
+        {wrapAtSeparators(meta)}
+      </p>
     </form>
   );
 }
@@ -87,7 +91,7 @@ export function JoinForm({ slug, next }: { slug: string; next: string | null }) 
   const [state, action, pending] = useActionState(join, ENTRY_IDLE);
   const inputId = useId();
   return (
-    <form action={action} onSubmit={(event) => pending && event.preventDefault()} className="w-480 text-left">
+    <form action={action} onSubmit={(event) => pending && event.preventDefault()} className="w-480 text-left max-md:w-full">
       <Hydrated state={state} />
       <div className="mt-40 flex items-baseline justify-between">
         <label htmlFor={inputId} className="font-mono text-11.5 leading-16 tracking-caps text-muted uppercase">
@@ -111,7 +115,7 @@ export function JoinForm({ slug, next }: { slug: string; next: string | null }) 
       <div className="mt-12">
         <LimeSubmit pending={pending || state.href !== null}>Get my paddle</LimeSubmit>
       </div>
-      <p className="mt-16 flex items-center gap-8 text-12.5 leading-18 text-ink2">
+      <p className="mt-16 flex items-center gap-8 text-12.5 leading-18 text-ink2 max-md:text-balance">
         <LockIcon size={15} className="flex-none" />
         Next, you’ll set your bidding power with PayPal, then bid.
       </p>

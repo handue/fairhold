@@ -6,11 +6,13 @@ import { eventHasEnded } from "@/server/engine/rules";
 import { backHrefFor } from "@/server/paypal/window-page";
 import { getGuestReadSource } from "@/server/queries/source";
 import { resolveViewer } from "@/server/queries/viewer";
+import { cn } from "@/ui/cn";
 import { readDemoGala } from "@/ui/demo/demo-state";
 import { SandboxMarker } from "@/ui/demo/SandboxMarker";
 import { JoinForm } from "@/ui/entry/EntryForms";
+import { MESSAGE_COLUMN, MESSAGE_TITLE } from "@/ui/entry/message-column";
 import { SandboxBuyer } from "@/ui/entry/SandboxBuyer";
-import { EventStatusPill } from "@/ui/EventNav";
+import { EventStatusPill, NAV_BAR, NAV_BRAND, NAV_STATUS } from "@/ui/EventNav";
 import { EventFooter } from "@/ui/event/EventFooter";
 import { HeartIcon } from "@/ui/icons";
 import { PaddleMark } from "@/ui/PaddleMark";
@@ -22,7 +24,7 @@ export const metadata: Metadata = { title: "Join" };
 /** design/16b: who invited you, one field and one action. */
 export default function JoinPage(props: Props) {
   return (
-    <Suspense fallback={<div aria-busy="true" className="h-68 border-b border-line" />}>
+    <Suspense fallback={<div aria-busy="true" className="h-68 border-b border-line max-lg:h-71" />}>
       <Join {...props} />
     </Suspense>
   );
@@ -42,34 +44,36 @@ async function Join({ params, searchParams }: Props) {
   const isDemo = gala.kind === "event" && gala.isDemo;
 
   return (
-    <div className="relative min-h-screen pb-82">
+    <div className="relative min-h-screen pb-82 max-md:min-h-dvh">
       {/* 08's bar with the event's own brand and live pill: no links, bidding power or paddle yet. */}
-      <header className="flex h-68 items-center border-b border-line px-48">
-        <div className="flex items-center gap-10 text-16 font-semibold">
-          <PaddleMark tone="brand" size={24} />
-          {event.name}
-          <span className="relative ml-14 inline-flex">
+      <header className={NAV_BAR}>
+        <div className={NAV_BRAND}>
+          <span className="contents max-lg:flex max-lg:min-w-0 max-lg:items-center max-lg:gap-10">
+            <PaddleMark tone="brand" size={24} className="max-desk:flex-none" />
+            <span className="max-desk:truncate">{event.name}</span>
+          </span>
+          <span className={NAV_STATUS}>
             <EventStatusPill event={event} />
             {isDemo && <SandboxMarker variant="nav" />}
           </span>
         </div>
       </header>
 
-      <main className="mx-auto flex w-880 flex-col items-center pt-120 text-center tabular-nums">
+      <main className={cn("mx-auto flex w-880 flex-col items-center pt-120 text-center tabular-nums", MESSAGE_COLUMN, "max-lg:pt-96 max-md:pt-48")}>
         <p className="font-mono text-11.5 leading-16 tracking-caps text-muted uppercase">Silent auction</p>
         {eventHasEnded(event.status) ? (
           <>
-            <h1 className="mt-8 text-34 leading-40 font-semibold tracking-title">Bidding has closed</h1>
-            <p className="mt-8 text-16 leading-24 text-ink2">{event.name} is no longer taking bids.</p>
+            <h1 className={cn("mt-8 text-34 leading-40 font-semibold tracking-title", MESSAGE_TITLE)}>Bidding has closed</h1>
+            <p className="mt-8 text-16 leading-24 text-ink2 max-md:text-balance">{event.name} is no longer taking bids.</p>
           </>
         ) : (
           <>
-            <h1 className="mt-8 text-34 leading-40 font-semibold tracking-title">You’re invited</h1>
-            <p className="mt-8 text-16 leading-24 text-ink2">
+            <h1 className={cn("mt-8 text-34 leading-40 font-semibold tracking-title", MESSAGE_TITLE)}>You’re invited</h1>
+            <p className="mt-8 text-16 leading-24 text-ink2 max-md:text-balance">
               Join {event.name} and bid on tonight’s {lots.length} lots.
             </p>
-            <p className="mt-4 flex items-center gap-8 text-16 leading-24 whitespace-nowrap text-ink2">
-              <HeartIcon size={15} className="flex-none text-muted" />
+            <p className="mt-4 flex items-center gap-8 text-16 leading-24 whitespace-nowrap text-ink2 max-md:block max-md:whitespace-normal max-md:text-balance">
+              <HeartIcon size={15} className="flex-none text-muted max-md:mr-8 max-md:inline max-md:align-[-2px]" />
               Your winning bids support {event.charityName}.
             </p>
             <JoinForm slug={slug} next={next} />

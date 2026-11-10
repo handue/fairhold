@@ -19,19 +19,23 @@ export async function SandboxBuyer() {
   return <SandboxBuyerCard email={email} password={password} />;
 }
 
+/** On a phone the card fills the width, its two lines stack, and the rows grow to the 40px buttons. */
 export function SandboxBuyerCard({ email, password }: { email: string; password: string }) {
   return (
-    <section aria-label="PayPal sandbox buyer" className="mt-40 w-480 rounded-20 border border-line py-16 pr-16 pl-20 text-left">
-      <div className="flex h-16 items-baseline justify-between">
+    <section
+      aria-label="PayPal sandbox buyer"
+      className="mt-40 w-480 rounded-20 border border-line py-16 pr-16 pl-20 text-left max-md:mt-32 max-md:w-full max-md:pl-16"
+    >
+      <div className="flex h-16 items-baseline justify-between max-md:h-auto max-md:flex-col max-md:gap-4">
         <span className="font-mono text-11 leading-16 tracking-caps text-muted uppercase">PayPal sandbox buyer</span>
         <span className="text-12.5 leading-16 text-muted">Use it in the PayPal window</span>
       </div>
-      <div className="mt-12 grid h-32 grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-x-12">
+      <div className="mt-12 grid h-32 grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-x-12 max-md:h-40 max-md:grid-cols-[64px_minmax(0,1fr)_auto]">
         <span className="text-13 text-muted">Email</span>
-        <span className="overflow-hidden font-mono text-12.5 whitespace-nowrap text-ink">{email}</span>
+        <span className="overflow-hidden font-mono text-12.5 whitespace-nowrap text-ink max-desk:text-ellipsis">{email}</span>
         <CopyButton value={email} label="Copy the sandbox buyer’s email" />
       </div>
-      <div className="mt-4 grid h-32 grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-x-12">
+      <div className="mt-4 grid h-32 grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-x-12 max-md:h-40 max-md:grid-cols-[64px_minmax(0,1fr)_auto]">
         <span className="text-13 text-muted">Password</span>
         <span aria-label="Password, hidden" className="overflow-hidden text-15 tracking-[.08em] whitespace-nowrap text-ink">
           ••••••••••

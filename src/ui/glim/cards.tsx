@@ -137,10 +137,11 @@ function OnMyOwn({ lines }: { lines: PlanCardAutopilotLines }) {
   );
 }
 
-const CARD_BUTTON = "flex h-40 cursor-pointer items-center justify-center rounded-12 text-13.5 font-semibold text-ink disabled:cursor-default";
+/** 44px tall on a phone, a thumb's height. */
+const CARD_BUTTON = "flex h-40 cursor-pointer items-center justify-center rounded-12 text-13.5 font-semibold text-ink disabled:cursor-default max-md:h-44";
 const QUIET_BUTTON = cn(CARD_BUTTON, "w-72 flex-none border border-line disabled:opacity-60");
 /** design/22 #22 and design/21 #10: where a button was, a quiet label that says how things stand. */
-const QUIET_LABEL = "flex h-40 flex-1 items-center justify-center rounded-12 bg-surface text-13.5 font-semibold text-muted";
+const QUIET_LABEL = "flex h-40 flex-1 items-center justify-center rounded-12 bg-surface text-13.5 font-semibold text-muted max-md:h-44";
 
 export interface PlanCardActions {
   onStart(planId: string): void;
@@ -300,7 +301,10 @@ function PlanEditor(props: {
         shares={rows.map((row, index) => ({ key: row.lotNumber, priority: index + 1, percent: ((amounts[index] ?? 0) / scale) * 100 }))}
       />
       {rows.map((row, index) => (
-        <div key={row.lotNumber} className="mt-12 grid grid-cols-[22px_1fr_92px_16px] items-center gap-10">
+        <div
+          key={row.lotNumber}
+          className="mt-12 grid grid-cols-[22px_1fr_92px_16px] items-center gap-10 max-md:grid-cols-[22px_minmax(0,1fr)_40px] max-md:gap-y-8"
+        >
           <PlanNumber priority={index + 1} />
           <div className="min-w-0">
             <div className="truncate text-13.5 font-medium">{row.title}</div>
@@ -309,6 +313,8 @@ function PlanEditor(props: {
           <label
             className={cn(
               "flex h-36 cursor-text items-center rounded-[10px] bg-white px-10 font-mono text-13 font-medium",
+              // A phone: its own row under the lot, and 16px so iOS doesn't zoom in on focus.
+              "max-md:col-span-2 max-md:col-start-2 max-md:row-start-2 max-md:h-44 max-md:px-12 max-md:text-16",
               focused === row.lotNumber ? "inset-ring-[1.5px] inset-ring-ink" : "inset-ring inset-ring-line",
             )}
           >
@@ -339,7 +345,7 @@ function PlanEditor(props: {
               setServerNotice(null);
               setRows((current) => current.filter((entry) => entry.lotNumber !== row.lotNumber));
             }}
-            className="flex size-16 cursor-pointer items-center justify-center text-muted"
+            className="flex size-16 cursor-pointer items-center justify-center text-muted max-md:col-start-3 max-md:row-start-1 max-md:-mr-12 max-md:size-40 max-md:justify-self-end"
           >
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" />

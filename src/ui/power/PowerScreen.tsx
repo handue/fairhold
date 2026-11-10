@@ -8,10 +8,11 @@ import type { GuestLinks } from "../routes";
 
 import { PowerPanel } from "./PowerPanel";
 
-/** 09's resting bubble; the no-break space keeps its second line as approved. */
+/** 09's resting bubble; the no-break space keeps its second line as approved. On a phone it is the question alone. */
 const NOT_SURE_BUBBLE: OrbBubble = {
   title: "Not sure how much?",
   body: "Tell me which lots you like. I’ll suggest an amount.",
+  phone: "title",
 };
 
 interface PowerScreenProps {
@@ -38,8 +39,11 @@ export function PowerScreen({ view, links, returnHref, initialCents }: PowerScre
         returnHref={returnHref}
         initialCents={initialCents}
       />
-      {/* Once bidding has closed there is no amount to suggest. */}
-      <CornerOrb bubble={biddingEnded ? undefined : NOT_SURE_BUBBLE} />
+      {/*
+        Once bidding has closed there is no amount to suggest. Below 1440 the corner closes the page,
+        under the trust line, rather than resting on the Hold button on a laptop's first screen.
+      */}
+      <CornerOrb bubble={biddingEnded ? undefined : NOT_SURE_BUBBLE} placement="page-end" />
     </>
   );
 }

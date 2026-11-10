@@ -19,6 +19,7 @@ import {
   type GetRowIdParams,
   type GridApi,
   type GridReadyEvent,
+  type GridSizeChangedEvent,
   type ICellRendererParams,
   type IRowNode,
   type Module,
@@ -34,6 +35,7 @@ import { formatPaddleNumber, formatUsd } from "@/ui/format";
 import { Money } from "@/ui/Money";
 import { Orb } from "@/ui/Orb";
 import { PaddleMark } from "@/ui/PaddleMark";
+import { BELOW_DESK_QUERY, PHONE_QUERY, useMediaQuery } from "@/ui/useMediaQuery";
 
 import {
   csvSafe,
@@ -118,6 +120,22 @@ const ICONS = {
 };
 
 const ROW_HEIGHT = 48;
+/**
+ * Bidder's width and Lots won's narrowest: 100 and 120 at 1440, as approved. Below 1440 Bidder takes 108,
+ * so a name with its initial shows ("Gregory …" at 100) and a tablet's full-width ledger still fits
+ * every column while settling; on a phone, where the frame shows only the first columns before it
+ * scrolls, Lots won keeps 152, most of a title ("Name the N…" at 120).
+ */
+function nameWidths({ belowDesk, phone }: { belowDesk: boolean; phone: boolean }) {
+  return { bidder: belowDesk ? 108 : 100, lots: phone ? 152 : 120 };
+}
+/**
+ * The columns' narrowest widths: the fixed ones and Lots won's. Narrower than this the grid scrolls
+ * sideways inside its own frame, and the paddle column stays put so every row keeps its name.
+ */
+function minWidth({ bidder, lots }: { bidder: number; lots: number }) {
+  return { before: 76 + bidder + lots + 56 + 88 + 114 + 104, settling: 76 + bidder + lots + 114 + 104 };
+}
 /** 48 with the border its container draws above it. */
 const PINNED_ROW_HEIGHT = 47;
 
@@ -278,6 +296,14 @@ export default function LedgerGrid({
   const charged = phase === "charged";
   // "Waiting" and "Ask again" need a little more room than "Failed" and "Retry".
   const waiting = rows.some((row) => row.item?.status === "pending");
+  const statusWidth = waiting ? 176 : 150;
+  const [gridWidth, setGridWidth] = useState<number | null>(null);
+  const phone = useMediaQuery(PHONE_QUERY);
+  const belowDesk = useMediaQuery(BELOW_DESK_QUERY);
+  const names = useMemo(() => nameWidths({ belowDesk, phone }), [belowDesk, phone]);
+  const least = minWidth(names);
+  // The frame's 1px border on each side.
+  const narrow = gridWidth !== null && gridWidth - 2 < (settling ? least.settling + statusWidth : least.before);
 
   const columns = useMemo<ColDef<LedgerRow>[]>(
     () => [
@@ -286,18 +312,19 @@ export default function LedgerGrid({
         headerName: "Paddle",
         field: "paddleNumber",
         width: 76,
+        pinned: narrow ? "left" : null,
         cellClass: "ledger-paddle",
         // The totals label spans paddle and bidder.
         colSpan: ({ node }) => (node?.rowPinned ? 2 : 1),
         valueFormatter: ({ node, value }) => (node?.rowPinned ? "Total" : formatPaddleNumber(value ?? 0)),
       },
-      { colId: "bidder", headerName: "Bidder", field: "bidder", width: 100, cellClass: "ledger-bidder", cellRenderer: TextCell },
+      { colId: "bidder", headerName: "Bidder", field: "bidder", width: names.bidder, cellClass: "ledger-bidder", cellRenderer: TextCell },
       {
         colId: "lots",
         headerName: lotsColumnHeader(phase),
         field: "lotsWon",
         flex: 1,
-        minWidth: 120,
+        minWidth: names.lots,
         cellClass: "ledger-lots",
         cellRenderer: TextCell,
         // Short titles in the cell, the full ones in the tooltip and the search.
@@ -344,7 +371,7 @@ export default function LedgerGrid({
       {
         colId: "status",
         headerName: "Status",
-        width: waiting ? 176 : 150,
+        width: statusWidth,
         hide: !settling,
         cellClass: "ledger-status",
         valueGetter: ({ data }) => (data?.item ? itemStatusLabel(data.item) : ""),
@@ -364,7 +391,7 @@ export default function LedgerGrid({
         },
       },
     ],
-    [phase, settling, charged, waiting],
+    [phase, settling, charged, statusWidth, narrow, names],
   );
 
   const defaultColDef = useMemo<ColDef<LedgerRow>>(
@@ -404,6 +431,7 @@ export default function LedgerGrid({
     },
     [reportPager],
   );
+  const onGridSizeChanged = useCallback((event: GridSizeChangedEvent<LedgerRow>) => setGridWidth(event.clientWidth), []);
 
   // Live updates by row id: only the rows that changed, and their changed cells flash.
   useEffect(() => {
@@ -447,6 +475,8 @@ export default function LedgerGrid({
       getRowHeight={getRowHeight}
       domLayout="autoHeight"
       ensureDomOrder
+      // Narrow frames scroll sideways; every column is drawn so a swipe never shows empty cells.
+      suppressColumnVirtualisation
       pagination
       paginationPageSize={LEDGER_PAGE_SIZE}
       paginationPageSizeSelector={false}
@@ -459,6 +489,7 @@ export default function LedgerGrid({
       tooltipShowDelay={300}
       context={context}
       onGridReady={onGridReady}
+      onGridSizeChanged={onGridSizeChanged}
       onPaginationChanged={reportPager}
       animateRows={false}
     />

@@ -33,7 +33,7 @@ export function GlimActivity({ slug, holdCents, glim, timeZone, fitsOneRow }: Gl
   const { duty } = glim;
   return (
     <section aria-label="Glim’s activity" className="rounded-24 border border-line bg-white">
-      <div className="flex h-67 items-center gap-12 border-b border-line px-16">
+      <div className="flex h-67 items-center gap-12 border-b border-line px-16 max-md:h-auto max-md:flex-wrap max-md:gap-y-12 max-md:py-14">
         <Orb size={38} />
         <div>
           <b className="block text-15 leading-20 font-semibold">Glim’s activity</b>
@@ -58,7 +58,7 @@ export function GlimActivity({ slug, holdCents, glim, timeZone, fitsOneRow }: Gl
       </div>
 
       {glim.decides ? (
-        <p className="grid grid-cols-[26px_minmax(0,1fr)] items-start gap-x-12 border-b border-line py-11 pr-20 pl-22 text-12.5 leading-18 whitespace-nowrap text-ink2">
+        <p className="grid grid-cols-[26px_minmax(0,1fr)] items-start gap-x-12 border-b border-line py-11 pr-20 pl-22 text-12.5 leading-18 whitespace-nowrap text-ink2 max-md:pr-16 max-md:pl-16 max-md:text-pretty max-md:whitespace-normal">
           <LockIcon size={14} className="mt-2 justify-self-center" />
           <span>
             <span className="block">Glim decides on its own inside your rules.</span>
@@ -66,13 +66,13 @@ export function GlimActivity({ slug, holdCents, glim, timeZone, fitsOneRow }: Gl
           </span>
         </p>
       ) : (
-        <p className="grid h-40 grid-cols-[26px_minmax(0,1fr)] items-center gap-x-12 border-b border-line pr-20 pl-22 text-12.5 whitespace-nowrap text-ink2">
-          <LockIcon size={14} className="justify-self-center" />
+        <p className="grid h-40 grid-cols-[26px_minmax(0,1fr)] items-center gap-x-12 border-b border-line pr-20 pl-22 text-12.5 whitespace-nowrap text-ink2 max-md:h-auto max-md:items-start max-md:py-11 max-md:pr-16 max-md:pl-16 max-md:leading-18 max-md:text-pretty max-md:whitespace-normal">
+          <LockIcon size={14} className="justify-self-center max-md:mt-2" />
           <span>Glim can’t bid past your limits or your {formatUsd(holdCents)} bidding power.</span>
         </p>
       )}
 
-      <ol className={cn("list-none pt-20 pr-20 pl-22", glim.feed.length <= 1 && fitsOneRow ? "pb-21" : "pb-22")}>
+      <ol className={cn("list-none pt-20 pr-20 pl-22 max-md:pr-16 max-md:pl-16", glim.feed.length <= 1 && fitsOneRow ? "pb-21" : "pb-22")}>
         {glim.feed.length === 0 ? (
           <FeedItem time={null} label="NOTHING YET" line="Every bid I place for you will show here." chip={null} />
         ) : (
@@ -109,6 +109,9 @@ function FeedItem({ time, label, line, chip }: { time: string | null; label: str
   );
 }
 
+const CONTROLS = "ml-auto flex items-center gap-2 max-md:ml-0 max-md:w-full max-md:gap-8";
+const CONTROL = "max-md:h-44 max-md:flex-1 max-md:justify-center";
+
 /** Talk to Glim before a plan; Edit plan and Pause while it runs; Edit plan and Resume while paused. */
 function GlimControls({ slug, duty }: { slug: string; duty: "idle" | "on" | "paused" }) {
   const router = useRouter();
@@ -128,30 +131,33 @@ function GlimControls({ slug, duty }: { slug: string; duty: "idle" | "on" | "pau
 
   if (duty === "idle") {
     return (
-      <div className="ml-auto flex items-center gap-2">
-        <Button variant="quiet" size={36} padding="px-14" onClick={() => openGlim()}>
+      <div className={CONTROLS}>
+        <Button variant="quiet" size={36} padding="px-14" className={CONTROL} onClick={() => openGlim()}>
           Talk to Glim
         </Button>
       </div>
     );
   }
   return (
-    <div className="ml-auto flex items-center gap-2">
-      {/* 10's ghost button is medium weight, where Button's 36 is semibold. */}
+    <div className={CONTROLS}>
+      {/* 10's ghost button is medium weight, where Button's 36 is semibold. On a phone it takes the line edge, as one of two halves. */}
       <button
         type="button"
-        className="inline-flex h-36 cursor-pointer items-center rounded-full border border-transparent px-11 text-13.5 font-medium whitespace-nowrap"
+        className={cn(
+          "inline-flex h-36 cursor-pointer items-center rounded-full border border-transparent px-11 text-13.5 font-medium whitespace-nowrap max-md:border-line",
+          CONTROL,
+        )}
         onClick={() => openGlim({ edit: true })}
       >
         Edit plan
       </button>
       {duty === "on" ? (
-        <Button variant="quiet" size={36} disabled={busy} onClick={() => void act("/pause")}>
+        <Button variant="quiet" size={36} disabled={busy} className={CONTROL} onClick={() => void act("/pause")}>
           <PauseIcon size={14} />
           Pause
         </Button>
       ) : (
-        <Button variant="ink" size={36} disabled={busy} className="border border-ink" onClick={() => void act("/resume")}>
+        <Button variant="ink" size={36} disabled={busy} className={cn("border border-ink", CONTROL)} onClick={() => void act("/resume")}>
           <PlayMark size={14} />
           Resume
         </Button>

@@ -133,6 +133,12 @@ export function topLotRows(view: Pick<InsightsView, "lotRows" | "phase">): Insig
 
 /** The drawn chart: 778 by 216, the plot from x 52 to 720 and from y 194 ($0) up to 10. */
 export const CHART = { width: 778, height: 216, left: 52, right: 720, bottom: 194, top: 10 } as const;
+/**
+ * Below 1440 the widget draws the chart at its own width, so the labels keep their 11px: the plot
+ * keeps its margins, and the round times thin out with the room.
+ */
+export const CHART_MIN_WIDTH = 220;
+const CHART_LABELS = 5;
 const NICE = [1, 2, 2.5, 5] as const;
 
 /** The value of the top gridline: four even steps whose top is the evening's figure or just under it. */
@@ -154,6 +160,8 @@ export interface ChartLabel {
 }
 
 export interface RaisedChart {
+  /** The plot's right edge, where the gridlines end: CHART.right at the drawn width. */
+  right: number;
   gridlines: { y: number; label: string }[];
   xLabels: ChartLabel[];
   line: string;
@@ -181,17 +189,25 @@ function minutesOfDay(at: number, timeZone: string): number {
   return hour * 60 + minute;
 }
 
-export function raisedChart(points: readonly RaisedPoint[], window: { opensAt: number; closesAt: number }, timeZone: string): RaisedChart {
+export function raisedChart(
+  points: readonly RaisedPoint[],
+  window: { opensAt: number; closesAt: number },
+  timeZone: string,
+  width: number = CHART.width,
+): RaisedChart {
+  const right = Math.max(CHART_MIN_WIDTH, width) - (CHART.width - CHART.right);
   const span = Math.max(1, window.closesAt - window.opensAt);
   const max = points.reduce((most, point) => Math.max(most, point.cents), 0);
   const top = chartTop(max);
-  const xOf = (at: number) => CHART.left + ((Math.min(Math.max(at, window.opensAt), window.closesAt) - window.opensAt) / span) * (CHART.right - CHART.left);
+  const xOf = (at: number) => CHART.left + ((Math.min(Math.max(at, window.opensAt), window.closesAt) - window.opensAt) / span) * (right - CHART.left);
   const yOf = (cents: number) => CHART.bottom - (cents / top) * (CHART.bottom - CHART.top);
 
   const gridlines = [0, 1, 2, 3, 4].map((step) => ({ y: yOf((top / 4) * step), label: formatUsd((top / 4) * step) }));
 
   const spanMinutes = span / MINUTE;
-  const every = LABEL_STEPS_MINUTES.find((minutes) => spanMinutes / minutes <= 5) ?? 1440;
+  // Five spans across the drawn plot, fewer across a narrower one.
+  const spans = Math.max(1, (CHART_LABELS * (right - CHART.left)) / (CHART.right - CHART.left));
+  const every = LABEL_STEPS_MINUTES.find((minutes) => spanMinutes / minutes <= spans) ?? 1440;
   const startMinutes = minutesOfDay(window.opensAt, timeZone);
   const xLabels: ChartLabel[] = [{ x: CHART.left, y: 212, text: formatClockTime(window.opensAt, timeZone), anchor: "start" }];
   const firstRound = Math.ceil((startMinutes + 0.001) / every) * every;
@@ -199,10 +215,10 @@ export function raisedChart(points: readonly RaisedPoint[], window: { opensAt: n
     const at = window.opensAt + (minutes - startMinutes) * MINUTE - (window.opensAt % MINUTE);
     if (at >= window.closesAt) break;
     const x = xOf(at);
-    if (x - CHART.left < LABEL_CLEARANCE || CHART.right - x < LABEL_CLEARANCE) continue;
+    if (x - CHART.left < LABEL_CLEARANCE || right - x < LABEL_CLEARANCE) continue;
     xLabels.push({ x, y: 212, text: formatClockTime(at, timeZone).replace(/\s?[AP]M$/, ""), anchor: "middle" });
   }
-  xLabels.push({ x: CHART.right, y: 212, text: formatClockTime(window.closesAt, timeZone), anchor: "end" });
+  xLabels.push({ x: right, y: 212, text: formatClockTime(window.closesAt, timeZone), anchor: "end" });
 
   const marks = points.map((point) => `${fixed(xOf(point.at))} ${fixed(yOf(point.cents))}`);
   const line = marks.length > 0 ? `M${marks.join("L")}` : "";
@@ -213,7 +229,7 @@ export function raisedChart(points: readonly RaisedPoint[], window: { opensAt: n
   const aria = last && first
     ? `Raised through the evening, from ${formatUsd(first.cents)} at ${formatClockTime(first.at, timeZone)} to ${formatUsd(last.cents)} at ${formatClockTime(last.at, timeZone)}`
     : "Raised through the evening";
-  return { gridlines, xLabels, line, area, end, aria };
+  return { right, gridlines, xLabels, line, area, end, aria };
 }
 
 /** The Raised widget's sparkline, 112 by 40: the same points, the evening across 108 and its figure up to 3. */

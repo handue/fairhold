@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { cn } from "../cn";
+import { ChevronDownIcon } from "../icons";
 import { useStreamEvent } from "../live/LiveStream";
 
 import type { GuideProgress } from "./demo-state";
-import { guideView, stepDoneBy, withStepDone } from "./guide";
+import { guideView, stepDoneBy, withStepDone, type GuideView } from "./guide";
 import { CheckIcon } from "./icons";
 
 interface DemoGuideProps {
@@ -21,6 +22,11 @@ interface DemoGuideProps {
  * grid runs to a third row; the card's insets are 8px (not 14.5) and its gaps 12px (not 16 and 20),
  * which keeps it clear of 08's second row of prices and of "Show 16 more lots". While the heart step
  * is now, its second sentence takes one more line. It moves on from the stream, with no refresh.
+ *
+ * Below 1280, and below 1440 on a screen under 860 tall, there is no free corner: the card, more than
+ * half of a 1024 screen, and Glim's bubble would cover the second row of lots on the first screen (and
+ * on a phone Glim's corner takes the bottom of the screen). So the guide folds into a bar that opens
+ * upwards: CompactGuide.
  */
 export function DemoGuide({ progress: initial, paddleId, paddleNumber }: DemoGuideProps) {
   const [progress, setProgress] = useState(initial);
@@ -38,9 +44,19 @@ export function DemoGuide({ progress: initial, paddleId, paddleNumber }: DemoGui
 
   const view = guideView(progress);
   return (
+    <>
+      <DockedGuide view={view} />
+      <CompactGuide view={view} />
+    </>
+  );
+}
+
+/** The approved card, from 1280 up on a screen at least 860 tall, and from 1440 on every screen. */
+function DockedGuide({ view }: { view: GuideView }) {
+  return (
     <aside
       aria-label="Demo guide"
-      className="fixed bottom-28 left-32 z-20 flex items-center rounded-18 border border-line bg-white px-16 py-8 shadow-bubble"
+      className="fixed bottom-28 left-32 z-20 flex items-center rounded-18 border border-line bg-white px-16 py-8 shadow-bubble max-desk:[@media(max-height:859px)]:hidden max-xl:hidden"
     >
       <div>
         <b className="block text-13.5 font-semibold whitespace-nowrap">Demo guide</b>
@@ -78,6 +94,66 @@ export function DemoGuide({ progress: initial, paddleId, paddleNumber }: DemoGui
           ];
         })}
       </ol>
+    </aside>
+  );
+}
+
+/**
+ * Where the card doesn't fit: a 44px bar, "Demo guide · Step 1 of 5" with the step's number, that
+ * opens the steps in one column above it. From 768 it takes the card's corner. On a phone from 360 it
+ * sits beside Glim's orb, centred on its 56px row (16 + 242 + 16 + 56 + 16 = 346); below 360 there is
+ * no room beside it, so it sits over Glim's corner (the bottom 88px), at the left gutter.
+ */
+function CompactGuide({ view }: { view: GuideView }) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  const now = view.steps[view.position - 1];
+  return (
+    <aside
+      aria-label="Demo guide"
+      className="fixed bottom-28 left-32 z-20 hidden max-w-[calc(100vw-64px)] flex-col items-start gap-8 max-desk:[@media(max-height:859px)]:flex max-xl:flex max-md:bottom-[calc(88px+env(safe-area-inset-bottom))] max-md:left-16 max-md:max-w-[calc(100vw-32px)] max-md:min-[360px]:bottom-[calc(22px+env(safe-area-inset-bottom))] max-md:min-[360px]:max-w-[calc(100vw-104px)]"
+    >
+      {open && (
+        <ol
+          id={listId}
+          className="flex w-320 max-w-full flex-col gap-10 rounded-18 border border-line bg-white p-14 shadow-bubble"
+        >
+          {view.steps.map((step) => (
+            <li
+              key={step.key}
+              aria-current={step.state === "now" ? "step" : undefined}
+              className={cn(
+                "grid grid-cols-[22px_minmax(0,1fr)] gap-x-8 text-14 leading-22",
+                step.state === "done" && "text-muted",
+                step.state === "now" && "font-semibold text-ink",
+                step.state === "next" && "text-ink2",
+              )}
+            >
+              <StepNumber number={step.number} state={step.state} />
+              {step.label}
+              {step.detail && <span className="col-start-2 text-13 leading-18 font-normal text-muted">{step.detail}</span>}
+            </li>
+          ))}
+        </ol>
+      )}
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-44 max-w-full cursor-pointer items-center gap-8 rounded-full border border-line bg-white pr-14 pl-10 text-14 whitespace-nowrap shadow-bubble"
+      >
+        {now && (
+          <span aria-hidden="true" className="flex">
+            <StepNumber number={now.number} state={now.state} />
+          </span>
+        )}
+        <b className="font-semibold">Demo guide</b>{" "}
+        <span className="text-muted">
+          · Step {view.position} of {view.total}
+        </span>
+        <ChevronDownIcon size={16} className={cn("flex-none text-ink2", !open && "rotate-180")} />
+      </button>
     </aside>
   );
 }

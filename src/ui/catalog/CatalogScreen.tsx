@@ -83,36 +83,45 @@ export function CatalogScreen({ seed, links }: { seed: CatalogSeed; links: Guest
       wonLine={wonLine}
     />
   );
-  const moreLots = lots.slice(FIRST_SCREEN_LOTS);
+  const rowFiller = lots[FIRST_SCREEN_LOTS];
 
   return (
     <ServerClockProvider serverNow={serverNow}>
       <EventNav event={event} viewer={viewer} links={links} active="lots" />
 
-      <main className="mx-auto max-w-1344 px-48 pt-24 pb-48">
+      {/*
+        Below 1440 the gutters narrow, and the page leaves room at its end for the demo guide and Glim's
+        corner, so the last lots scroll clear of them on a short laptop screen; below 1280 the title and
+        total share a row over the tabs, and the grid is three across until the first row of the rest
+        (CatalogGrid's rowFiller); on a phone the room at the bottom is Glim's corner (88px).
+      */}
+      <main className="mx-auto max-w-1344 px-48 pt-24 pb-48 max-desk:px-32 max-desk:pb-144 max-lg:pb-128 max-md:px-16 max-md:pt-16 max-md:pb-[calc(104px+env(safe-area-inset-bottom))]">
         {viewer && viewer.holdCents !== null && (
           <GlimBand viewer={viewer} receiptHref={eventHasEnded(event.status) ? receiptHref(links) : undefined} />
         )}
         {viewer && viewer.holdCents === null && !eventHasEnded(event.status) && <NotSetBand href={powerHref(links)} />}
 
-        <div className="mt-32 flex h-40 items-center justify-between">
-          <div className="flex items-center gap-32">
-            <h1 className="text-30 leading-40 font-semibold tracking-title whitespace-nowrap">Tonight’s lots</h1>
+        <div className="mt-32 flex h-40 items-center justify-between max-xl:grid max-xl:h-auto max-xl:grid-cols-[auto_minmax(0,1fr)] max-xl:gap-x-32 max-xl:gap-y-20 max-md:mt-24 max-md:grid-cols-1 max-md:gap-y-12">
+          <div className="flex items-center gap-32 max-xl:contents">
+            <h1 className="text-30 leading-40 font-semibold tracking-title whitespace-nowrap max-md:text-28 max-md:leading-36">
+              Tonight’s lots
+            </h1>
             <CategoryTabs links={links} selected={view.category} lotCount={view.lotCount} />
           </div>
-          <p className="flex items-baseline gap-10 whitespace-nowrap">
-            <b className="font-mono text-28 leading-40 font-medium tracking-display tabular-nums">
+          <p className="flex items-baseline gap-10 whitespace-nowrap max-xl:col-start-2 max-xl:row-start-1 max-xl:justify-self-end max-md:col-start-1 max-md:row-start-2 max-md:justify-self-start max-md:whitespace-normal">
+            <b className="font-mono text-28 leading-40 font-medium tracking-display tabular-nums max-md:text-24 max-md:leading-30">
               <Money cents={view.raisedCents} />
             </b>
-            <span className="text-14 text-muted">raised so far for {event.charityName}</span>
+            <span className="text-14 text-muted max-md:min-w-0 max-md:text-balance">raised so far for {event.charityName}</span>
           </p>
         </div>
 
         <CatalogGrid
           key={view.category ?? "all"}
           firstTiles={lots.slice(0, FIRST_SCREEN_LOTS).map(tile)}
-          moreTiles={moreLots.map(tile)}
-          moreCount={moreLots.length}
+          rowFiller={rowFiller && tile(rowFiller)}
+          moreTiles={lots.slice(FIRST_SCREEN_LOTS + 1).map(tile)}
+          moreCount={Math.max(0, lots.length - FIRST_SCREEN_LOTS)}
         />
       </main>
 

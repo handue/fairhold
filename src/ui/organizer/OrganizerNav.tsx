@@ -4,7 +4,7 @@ import type { EventSummary } from "@/server/queries/types";
 import { cn } from "@/ui/cn";
 import { RoleMenu } from "@/ui/demo/RoleMenu";
 import { SandboxMarker } from "@/ui/demo/SandboxMarker";
-import { EventStatusPill } from "@/ui/EventNav";
+import { EventStatusPill, NAV_BAR, NAV_BRAND, NAV_BREAK, NAV_PILL, NAV_STATUS, NAV_TAB, NAV_TAB_ACTIVE, NAV_TABS } from "@/ui/EventNav";
 import { PaddleMark } from "@/ui/PaddleMark";
 
 /**
@@ -39,42 +39,51 @@ export function OrganizerNav({
     { key: "projector", label: "Projector", href: `${base}/projector` },
   ];
   return (
-    <header className="flex h-68 items-center border-b border-line px-48">
-      <div className="flex items-center gap-10 text-16 font-semibold">
-        <PaddleMark tone="brand" size={24} />
-        {event.name}
-        <span className="relative ml-14 inline-flex">
+    <header className={NAV_BAR}>
+      <div className={NAV_BRAND}>
+        {/* A box of its own below 1024 only, where the status pill moves under the name. */}
+        <span className="contents max-lg:flex max-lg:min-w-0 max-lg:items-center max-lg:gap-10">
+          <PaddleMark tone="brand" size={24} className="max-desk:flex-none" />
+          <span className="max-desk:truncate">{event.name}</span>
+        </span>
+        <span className={NAV_STATUS}>
           <EventStatusPill event={event} />
           <SandboxMarker variant="nav" whenDemo />
         </span>
       </div>
 
+      <span aria-hidden="true" className={NAV_BREAK} />
       {/* The closed pill is 29.5px narrower than the live one, so the links keep their x either way. */}
-      <nav aria-label="Organizer" className={cn("flex gap-28 text-14 text-ink2", live ? "ml-56" : "ml-[85.5px]")}>
+      <nav
+        aria-label="Organizer"
+        className={cn("flex gap-28 text-14 text-ink2", live ? "ml-56 max-desk:ml-40" : "ml-[85.5px] max-desk:ml-[69.5px]", NAV_TABS)}
+      >
         {links.map(({ key, label, href }) => (
           <Link
             key={key}
             href={href}
             aria-current={key === active ? "page" : undefined}
-            className={cn(key === active && "font-semibold text-ink")}
+            className={cn(key === active && "font-semibold text-ink", NAV_TAB, key === active && NAV_TAB_ACTIVE)}
           >
             {label}
           </Link>
         ))}
       </nav>
 
-      <div className="ml-auto flex items-center gap-12">
+      <div className={cn("ml-auto flex items-center gap-12", NAV_PILL)}>
         <RoleMenu
           slug={event.slug}
           view="organizer"
-          className="flex h-40 items-center gap-8 rounded-full border border-line pr-14 pl-6 text-13 font-medium whitespace-nowrap"
+          className="flex h-40 items-center gap-8 rounded-full border border-line pr-14 pl-6 text-13 font-medium whitespace-nowrap max-desk:flex-none max-md:pr-6"
         >
           <span className="flex size-28 items-center justify-center rounded-full bg-lime text-12 font-semibold text-ink">
             {organizerName.charAt(0).toUpperCase()}
           </span>
-          <span>
+          {/* On a phone the pill is the initial alone; the name stays for screen readers. */}
+          <span className="max-md:hidden">
             {organizerName} <span className="font-normal text-muted">· Organizer</span>
           </span>
+          <span className="sr-only hidden max-md:inline">{organizerName} · Organizer</span>
         </RoleMenu>
       </div>
     </header>
