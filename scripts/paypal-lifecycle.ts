@@ -3,11 +3,11 @@
  * each order as a sandbox buyer; the script waits for PayPal's redirect on a local listener and
  * writes what PayPal answered to docs/paypal-lifecycle.md.
  *
- *   A     authorize $500; a capture mocked as INSTRUMENT_DECLINED; capture $320 with
+ *   A     authorize $500; a capture mocked as TRANSACTION_REFUSED; capture $320 with
  *         final_capture; replay that capture with the same PayPal-Request-Id; read back
  *   B     authorize $250, void, read back
  *   C     raise $500 to $700: a new authorization, then void the old one; read both back
- *   D, E  authorize $300 each and leave them open for the Nov 8 reauthorize test
+ *   D, E  authorize $300 each and leave them open for the reauthorize test
  *
  * Options:
  *   --only=A,C          run some scenarios (results of the others stay in the report)
@@ -295,16 +295,17 @@ async function runCaptureScenario(context: Context): Promise<ScenarioResult> {
       ...extra,
     });
 
+    // Not INSTRUMENT_DECLINED: on this endpoint the sandbox answers that mock with a bare 403.
     try {
       const unexpected = await context.payments.capture(
-        capture("mock-declined", { invoiceId: `FH-LC-${context.runId}-A-MOCK`, mockIssue: "INSTRUMENT_DECLINED" }),
+        capture("mock-declined", { invoiceId: `FH-LC-${context.runId}-A-MOCK`, mockIssue: "TRANSACTION_REFUSED" }),
       );
       recorder.check("Mocked decline is refused", false, `PayPal captured ${unexpected.captureId}`, unexpected.debugId);
     } catch (error) {
       if (!(error instanceof PaypalError)) throw error;
       recorder.check(
         "Mocked decline is refused",
-        error.code === "INSTRUMENT_DECLINED",
+        error.code === "TRANSACTION_REFUSED",
         `${error.code} (HTTP ${error.httpStatus ?? "none"})`,
         error.debugId,
       );
@@ -396,7 +397,7 @@ async function runRaiseScenario(context: Context): Promise<ScenarioResult> {
 }
 
 async function runOpenScenario(context: Context, step: "D" | "E"): Promise<ScenarioResult> {
-  const recorder = new ScenarioRecorder(step, `Authorize $300 and leave it open for the Nov 8 reauthorize test`);
+  const recorder = new ScenarioRecorder(step, `Authorize $300 and leave it open for the reauthorize test`);
   await guarded(recorder, async () => {
     const hold = await approveHold(context, recorder, step, 300_00);
     if (!hold) return;
@@ -587,7 +588,7 @@ function renderReport(report: Report): string {
     lines.push("");
   }
   if (open.length > 0) {
-    lines.push("## Open for the Nov 8 reauthorize test", "");
+    lines.push("## Open for the reauthorize test", "");
     lines.push("| Hold | Authorization | Amount | Authorized | Honor period ends | Expires |", "| --- | --- | --- | --- | --- | --- |");
     for (const item of open) {
       lines.push(
@@ -596,7 +597,7 @@ function renderReport(report: Report): string {
     }
     lines.push(
       "",
-      "On Nov 8: reauthorize D on its original id, then capture the new id; reauthorize E, then void",
+      "Once the honor period ends: reauthorize D on its original id, then capture the new id; reauthorize E, then void",
       "E's original id; then try to reauthorize a new id to record REAUTHORIZATION_NOT_SUPPORTED.",
       "A REAUTHORIZATION_TOO_SOON answer means the honor period has not ended yet.",
       "",

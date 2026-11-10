@@ -237,7 +237,18 @@ After the review fixes I reran hold, glim-panel, control-room and live with no f
 - **Cancel:** without its token 409 and nothing changed; with it 200, canceled.
 - **Streams:** the 21st from one address got 429, and a new one opened once the others closed.
 
+## On the hosted URL (Nov 9, 10:49 to 10:55 AM)
+
+https://fairhold.onrender.com, deployed from 7e26e5f by the Blueprint, with live Claude and the PayPal sandbox:
+
+- **The whole path with a real sandbox hold:** a demo gala, the $500 hold approved by a person as the sandbox buyer (the popup was blocked, so the tab went to PayPal and came back), a $320 bid, the golden sentence on live Claude ($380 and $120), Start bidding, both rivals, close through the route, the checks including PayPal's, and the charge.
+- **The money, read from the hosted database:** Jamie's hold is `captured` with $90 captured and $410 released, and the settlement row succeeded.
+- **Render:** no restart and no error in the logs during the run. The stream works through Render's proxy, with its first bytes after about 80 ms.
+- **One thing not explained:** about 25 s after the charge, the app's built-in browser stopped sending its session cookie, so 12 answered 401. The session row was still there, last seen at 10:54:40, and nothing in the app clears a cookie except Reset, which was not pressed. A curl session through the same close and charge kept working, and so did headless Chrome the night before. Check it again in a normal browser while rehearsing the video.
+
 ## Known gaps
+
+**PayPal's sandbox, from the lifecycle script (Nov 8, evening):** 29 of 29 checks pass in `docs/paypal-lifecycle.md`: a hold, a refused capture, a $320 final capture and its replay, a void, and a raise that voids the old hold. The app's own window has still not met a real approval. Holds D and E stay open for the reauthorize test, which PayPal allows from Wed Nov 11, 9:10 PM PST.
 
 - **Not run anywhere yet:**
   - The hosted URL, including the stream through Render's proxy and the first cron sweep.
