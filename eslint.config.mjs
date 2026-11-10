@@ -5,8 +5,9 @@ import nextTs from "eslint-config-next/typescript";
 // Glim decides inside a mandate and code enforces it: Glim's modules can never reach PayPal, and
 // src/server/glim cannot write to the database or call the engine's actions at all
 // (docs/planning/glim-autopilot.md §5.6).
+// Each group also matches a relative path (../paypal, ../../db), so a relative import can't slip past.
 const NO_PAYPAL = [
-  { group: ["@/server/paypal", "@/server/paypal/*"], message: "Glim and the plan writer never call PayPal." },
+  { group: ["@/server/paypal", "@/server/paypal/*", "**/paypal", "**/paypal/*"], message: "Glim and the plan writer never call PayPal." },
   { group: ["@paypal/*"], message: "Glim and the plan writer never call PayPal." },
 ];
 const ENGINE_WRITES = [
@@ -37,11 +38,15 @@ const eslintConfig = defineConfig([
         {
           paths: [
             { name: "pg", message: "Glim cannot touch the database; src/server/plans writes plans." },
-            { name: "@/server/engine", importNames: ENGINE_WRITES, message: "Glim cannot bid; src/server/plans applies its decisions." },
+            ...["@/server/engine", "../engine", "../../engine"].map((name) => ({
+              name,
+              importNames: ENGINE_WRITES,
+              message: "Glim cannot bid; src/server/plans applies its decisions.",
+            })),
           ],
           patterns: [
             ...NO_PAYPAL,
-            { group: ["@/server/db", "@/server/db/*"], message: "Glim cannot touch the database; src/server/plans writes plans." },
+            { group: ["@/server/db", "@/server/db/*", "**/db", "**/db/*"], message: "Glim cannot touch the database; src/server/plans writes plans." },
             {
               group: [
                 "@/server/engine/actions",
@@ -49,10 +54,15 @@ const eslintConfig = defineConfig([
                 "@/server/engine/pg-store",
                 "@/server/engine/tick",
                 "@/server/engine/bidding-power",
+                "**/engine/actions",
+                "**/engine/closing",
+                "**/engine/pg-store",
+                "**/engine/tick",
+                "**/engine/bidding-power",
               ],
               message: "Glim cannot bid; src/server/plans applies its decisions.",
             },
-            { group: ["@/server/plans", "@/server/plans/*"], message: "The plan writer depends on Glim, not the other way round." },
+            { group: ["@/server/plans", "@/server/plans/*", "**/plans", "**/plans/*"], message: "The plan writer depends on Glim, not the other way round." },
           ],
         },
       ],
