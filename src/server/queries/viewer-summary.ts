@@ -57,6 +57,8 @@ export function summarizeViewer(
     firstName: paddle.firstName,
     holdCents: paddle.holdCents,
     availableCents: paddle.holdCents === null ? 0 : Math.max(0, paddle.holdCents - leadingCents - wonCents),
+    heldCents: paddle.heldCents === undefined ? paddle.holdCents : paddle.heldCents,
+    wonCents,
     winningCount,
     outbidCount,
   };

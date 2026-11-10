@@ -201,6 +201,12 @@ test("from a new demo, with Glim moving money on its own, to the receipt", async
   await page.goto(`${catalog}/paddle`);
   await page.waitForURL(new RegExp(`${catalog}/receipt`));
 
+  // 08 after the charge: the nav says what was paid and released, as 11 does, never "Not set".
+  await page.goto(catalog);
+  await expect(nav(page)).toContainText(/Paid\s*\$310/);
+  await expect(nav(page)).toContainText(/Released\s*\$190/);
+  await expect(nav(page)).not.toContainText("Not set");
+
   // 14, on the venue's screen: the sold lots and the Sandbox demo marker.
   await page.goto(`${catalog}/projector`);
   await expect(page.getByText("Sandbox demo")).toBeVisible();

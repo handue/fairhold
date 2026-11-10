@@ -2,6 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "@/server/db/client";
 import { holdsNul } from "@/server/db/text";
+import { isOrWasBiddingPowerSql } from "@/server/holds/bidding-hold";
 
 import type {
   BidRecord,
@@ -72,7 +73,8 @@ export function createPostgresGuestSource(db: Database): GuestReadSource {
           p.number::integer as "number",
           p.first_name as "firstName",
           hold.amount_cents::integer as "holdCents",
-          hold.id::text as "holdId"
+          hold.id::text as "holdId",
+          held.amount_cents::integer as "heldCents"
         from paddles p
         left join lateral (
           select h.id, h.amount_cents
@@ -81,6 +83,13 @@ export function createPostgresGuestSource(db: Database): GuestReadSource {
           order by h.authorized_at desc nulls last
           limit 1
         ) hold on true
+        left join lateral (
+          select h.amount_cents
+          from holds h
+          where h.paddle_id = p.id and ${sql.raw(isOrWasBiddingPowerSql("h"))}
+          order by (h.status = 'authorized') desc, h.authorized_at desc nulls last
+          limit 1
+        ) held on true
         where p.event_id = ${eventId} and p.number = ${paddleNumber}
         limit 1
       `);

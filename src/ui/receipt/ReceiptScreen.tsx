@@ -15,6 +15,7 @@ import { LockIcon } from "../icons";
 import { LiveRefresh } from "../live/LiveStream";
 import { Money } from "../Money";
 import { Orb } from "../Orb";
+import { OutcomePill } from "../OutcomePill";
 import { PaddleMark } from "../PaddleMark";
 import { DownloadIcon, HeartLineIcon, MailIcon, OpenLockIcon } from "../paddle/icons";
 import { lotClockTime } from "../paddle/time";
@@ -49,12 +50,14 @@ export function ReceiptScreen({ view, links }: { view: ReceiptView; links: Guest
           firstName: view.viewer.firstName,
           holdCents: view.hold?.cents ?? null,
           availableCents: 0,
+          heldCents: view.hold?.cents ?? null,
+          wonCents: view.payCents,
           winningCount: 0,
           outbidCount: 0,
         }}
         links={links}
         active="paddle"
-        power={<OutcomePill phase={phase} payCents={view.payCents} releaseCents={view.releaseCents} />}
+        power={<OutcomePill settled={phase === "paid" || phase === "released"} payCents={view.payCents} releaseCents={view.releaseCents} />}
       />
 
       <div className="mx-auto max-w-1344 px-48 pt-32 pb-120 tabular-nums max-desk:px-32 max-desk:pb-0 max-md:px-16 max-md:pt-24">
@@ -100,35 +103,6 @@ export function ReceiptScreen({ view, links }: { view: ReceiptView; links: Guest
       */}
       <CornerOrb bubble={bubble ? { ...bubble, phone: "none" } : undefined} placement="page-end" />
     </>
-  );
-}
-
-/**
- * 11's nav pill: what was paid and released, or what will be. On a phone it keeps the two figures
- * beside the tabs, as bidding power does, and the receipt right under it names them.
- */
-function OutcomePill({ phase, payCents, releaseCents }: { phase: ReceiptPhase; payCents: number; releaseCents: number }) {
-  const settled = phase === "paid" || phase === "released";
-  const paid = settled ? "Paid" : "To pay";
-  const released = settled ? "Released" : "To release";
-  return (
-    <div className="flex h-40 items-center gap-10 rounded-full bg-ink px-14 font-mono text-13 text-white max-desk:flex-none max-desk:whitespace-nowrap">
-      <span className="flex items-center gap-10">
-        <small className="text-10.5 tracking-label text-on-ink-muted uppercase max-md:hidden">{paid}</small>
-        <span className="sr-only hidden max-md:inline">{paid}</span>
-        <b className="font-medium">
-          <Money cents={payCents} />
-        </b>
-      </span>
-      <span className="text-on-ink-muted">·</span>
-      <span className="flex items-center gap-10">
-        <small className="text-10.5 tracking-label text-on-ink-muted uppercase max-md:hidden">{released}</small>
-        <span className="sr-only hidden max-md:inline">{released}</span>
-        <b className="font-medium text-lime">
-          <Money cents={releaseCents} />
-        </b>
-      </span>
-    </div>
   );
 }
 

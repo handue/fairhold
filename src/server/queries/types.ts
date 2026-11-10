@@ -38,6 +38,11 @@ export interface PaddleRecord {
   holdCents: number | null;
   /** That hold's id, so the stream can tell a change to it from one to an older hold. */
   holdId?: string | null;
+  /**
+   * The hold that is, or last was, the bidding power (src/server/holds/bidding-hold.ts): the
+   * authorized hold, or after the charge the one it captured or released. Unset means holdCents.
+   */
+  heldCents?: number | null;
 }
 
 export interface LotRecord {
@@ -128,6 +133,10 @@ export interface ViewerSummary {
   holdCents: number | null;
   /** What the nav shows as left: hold − leading bids − won amounts, never below zero. */
   availableCents: number;
+  /** The hold that is or was the bidding power, so the nav can still say what was held after the charge. */
+  heldCents: number | null;
+  /** What the paddle's won lots add up to: what it pays once bidding has closed. */
+  wonCents: number;
   winningCount: number;
   outbidCount: number;
 }
