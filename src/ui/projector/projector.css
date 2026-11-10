@@ -1,0 +1,413 @@
+/*
+ * Screen 14, the projector, from mockups/14-web-projector.html and design/26-projector-states.html,
+ * value for value: a 1440 x 900 ink page for a dark ballroom, scaled to fit the screen it is shown on.
+ * Greys derive from Ink only; lines are at .16 so a projector's grey black doesn't wash them out.
+ */
+.fh-projector-stage {
+  position: fixed;
+  inset: 0;
+  background: var(--color-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.fh-projector {
+  --raise: #1c1c1f;
+  --hair: rgba(255, 255, 255, 0.16);
+  --edge: rgba(255, 255, 255, 0.16);
+  --grey: #a1a1a6;
+  position: relative;
+  flex: none;
+  width: 1440px;
+  height: 900px;
+  overflow: hidden;
+  background: var(--color-ink);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  transform: scale(var(--fit, 1));
+}
+.fh-projector .mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+.fh-projector .cm {
+  margin: 0 -0.12em;
+}
+.fh-projector .eyebrow {
+  font-size: 14px;
+  line-height: 18px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--grey);
+  white-space: nowrap;
+}
+.fh-projector .eyebrow.sect {
+  font-size: 16px;
+  line-height: 20px;
+}
+
+/* Top row: the event and the size of the room. */
+.fh-projector .top {
+  position: absolute;
+  left: 64px;
+  right: 88px;
+  top: 36px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.fh-projector .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.fh-projector .brand svg {
+  flex: none;
+  margin-left: -5.33px;
+}
+.fh-projector .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 16px;
+  height: 36px;
+  padding: 0 14px 0 15px;
+  border-radius: 18px;
+  background: var(--raise);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+.fh-projector .live b {
+  width: 9px;
+  height: 9px;
+  border-radius: 5px;
+  background: var(--color-lime);
+  display: block;
+}
+.fh-projector .live.idle b {
+  background: var(--grey);
+}
+/* Decision C6: 18's Sandbox demo marker at room scale, the live pill with no dot. */
+.fh-projector .sbx {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 12px;
+  height: 36px;
+  padding: 0 15px;
+  border-radius: 18px;
+  background: var(--raise);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--grey);
+}
+
+/* The board: the event's two figures on the left, the lots on the right. */
+.fh-projector .board {
+  position: absolute;
+  left: 64px;
+  top: 116px;
+  width: 1312px;
+  display: grid;
+  grid-template-columns: 448px 816px;
+  grid-template-rows: auto auto auto;
+  column-gap: 48px;
+}
+.fh-projector .raised {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.fh-projector .total {
+  margin-top: 7.5px;
+  margin-left: -0.045em;
+  font-size: 144px;
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+.fh-projector .cause {
+  margin-top: 12px;
+  font-size: 24px;
+  line-height: 30px;
+  color: var(--grey);
+  white-space: nowrap;
+}
+.fh-projector .ends {
+  grid-column: 1;
+  grid-row: 3;
+  display: flex;
+  flex-direction: column;
+  padding-top: 77px;
+}
+.fh-projector .clock {
+  margin-top: 12px;
+  margin-left: -0.05em;
+  font-size: 64px;
+  line-height: 64px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+.fh-projector .lh {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 20px;
+  padding: 0 24px;
+}
+.fh-projector .who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 26px;
+  font-size: 20px;
+  line-height: 26px;
+  color: var(--grey);
+  white-space: nowrap;
+}
+/* Glim's mark on ink: sentence-case "Bid by Glim" in lime. */
+.fh-projector .pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  color: var(--color-lime);
+}
+.fh-projector .now {
+  --grey: #a8a8ad;
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  gap: 28px;
+  margin-top: 16px;
+  padding: 24px;
+  border-radius: 24px;
+  background: var(--raise);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.fh-projector .tile {
+  width: 158px;
+  flex: none;
+  border-radius: 20px;
+  background: linear-gradient(180deg, var(--color-stone) 0%, var(--color-stone-deep) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fh-projector .tile svg {
+  position: relative;
+  top: -6px;
+}
+.fh-projector .nb {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-projector .nb .eyebrow em {
+  font-style: normal;
+  font-weight: 500;
+  color: #fff;
+}
+.fh-projector .nums {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 8px;
+}
+.fh-projector .cdl {
+  margin-left: -0.05em;
+  font-size: 80px;
+  line-height: 72px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+.fh-projector .bidl {
+  font-size: 64px;
+  line-height: 64px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+.fh-projector .tr {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 6px;
+}
+.fh-projector .ttl {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fh-projector .cnt {
+  font-size: 20px;
+  line-height: 26px;
+  color: var(--grey);
+  white-space: nowrap;
+}
+.fh-projector .now .who {
+  margin-top: 10px;
+}
+.fh-projector .rows {
+  grid-column: 2;
+  grid-row: 3;
+  margin-top: 8px;
+  list-style: none;
+}
+.fh-projector .row {
+  display: grid;
+  grid-template-columns: 158px minmax(0, 1fr) auto;
+  column-gap: 28px;
+  row-gap: 4px;
+  align-items: baseline;
+  padding: 14px 24px 10px;
+}
+.fh-projector .row + .row {
+  border-top: 1px solid var(--hair);
+}
+.fh-projector .cd {
+  margin-left: -0.05em;
+  font-size: 56px;
+  line-height: 40px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+.fh-projector .row h3 {
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fh-projector .bid {
+  font-size: 56px;
+  line-height: 40px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  text-align: right;
+}
+.fh-projector .row .cnt {
+  text-align: right;
+}
+
+/* The bottom band: how to join, and what backs every bid. */
+.fh-projector .rule {
+  position: absolute;
+  left: 64px;
+  right: 64px;
+  top: 716px;
+  height: 1px;
+  background: var(--hair);
+}
+.fh-projector .band {
+  position: absolute;
+  left: 64px;
+  top: 740px;
+  width: 1312px;
+  height: 132px;
+}
+.fh-projector .qr {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 132px;
+  height: 132px;
+  border-radius: 20px;
+  background: #fff;
+  overflow: hidden;
+}
+.fh-projector .qr svg {
+  display: block;
+}
+.fh-projector .join {
+  position: absolute;
+  left: 160px;
+  top: 14px;
+}
+.fh-projector .call {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+}
+.fh-projector .call .mono {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.fh-projector .trust {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 20px;
+  line-height: 28px;
+  color: var(--grey);
+}
+.fh-projector .trust svg {
+  flex: none;
+  margin-top: 4px;
+}
+.fh-projector .trust span {
+  display: block;
+  white-space: nowrap;
+}
+
+/* Glim in the corner at 1.3x for the room, speaking for the gala. */
+.fh-projector .buddy {
+  position: absolute;
+  right: 32px;
+  bottom: 28px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  color: var(--color-ink);
+  transform: scale(1.3);
+  transform-origin: 100% 100%;
+}
+.fh-projector .bubble {
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 18px 18px 4px 18px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 30px rgba(11, 11, 12, 0.1);
+  max-width: 230px;
+}
+.fh-projector .bubble b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.fh-projector .bubble span {
+  display: block;
+  font-size: 12.5px;
+  color: var(--color-muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}

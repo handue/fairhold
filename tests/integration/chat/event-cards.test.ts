@@ -29,6 +29,9 @@ async function runningGala(): Promise<ChatGala> {
   return gala;
 }
 
+/** design/22 #13: Start bidding's own card comes first, before the opening bid's. */
+const PLAN_STARTED = "Chef’s Table up to $380, Spa Day up to $120.";
+
 const eventCards = (messages: readonly ChatMessageView[]) =>
   messages.flatMap((message) => (message.card?.type === "event" ? [message.card] : []));
 
@@ -72,6 +75,7 @@ describe("a rival's bid", () => {
     await bid(pool, gala.rival, gala.lots.chef, 36_000);
     await bid(pool, gala.rival, gala.lots.chef, 40_000);
     expect(eventLines(await readView(gala))).toEqual([
+      PLAN_STARTED,
       "I bid $90 for you. I’ll go up to $120.",
       "Someone bid $360. I raised to $380, your limit for this lot.",
       "Someone bid $400, over your $380 limit.",
@@ -86,14 +90,15 @@ describe("the templater", () => {
     const written = await Promise.all([syncEventCards({ pool }), syncEventCards({ paddleId: gala.jamie, pool }), syncEventCards({ pool })]);
     expect(written.reduce((sum, count) => sum + count, 0)).toBe(1);
     expect(await syncEventCards({ pool })).toBe(0);
-    expect(eventLines(await readView(gala))).toEqual(["I bid $90 for you. I’ll go up to $120.", "Someone bid $95. I raised to $100."]);
+    expect(eventLines(await readView(gala))).toEqual([PLAN_STARTED, "I bid $90 for you. I’ll go up to $120.", "Someone bid $95. I raised to $100."]);
     const [counts] = await rows<{ actions: number; cards: number }>(
       pool,
       `select (select count(*)::int from glim_actions where paddle_id = $1 and source_event_log_id is not null) as actions,
               (select count(*)::int from chat_messages where paddle_id = $1 and card_type = 'event') as cards`,
       [gala.jamie],
     );
-    expect(counts).toEqual({ actions: 2, cards: 2 });
+    // The two facts' cards, and Start bidding's own, which answers no fact.
+    expect(counts).toEqual({ actions: 2, cards: 3 });
   });
 
   it("says nothing to a guest who never started a plan, or about a simulated guest's limits", async () => {
@@ -118,7 +123,9 @@ describe("the templater", () => {
       "Bidding closed at $400. You didn’t win, so you won’t be charged.",
       "Bidding closed. You won at $90.",
     ]);
-    expect(cards.slice(-2).map((card) => card.chip)).toEqual([{ kind: "closed" }, { kind: "closed" }]);
+    // design/22 #20 and #21: the lime Won chip, and 10's grey Closed.
+    expect(cards.slice(-2).map((card) => card.chip?.kind).sort()).toEqual(["closed", "won"]);
+    expect(cards.find((card) => card.chip?.kind === "won")?.chip).toEqual({ kind: "won", amountCents: 9_000 });
     const items = lastPlanCard(view).items.map((item) => item.statusText);
     expect(items).toEqual(["Closed", "Won at $90"]);
   });
@@ -131,7 +138,7 @@ describe("the templater", () => {
     await closeDueLots(undefined, { pool });
     const card = lastPlanCard((await sendMessage(gala, GOLDEN_SENTENCE)).view);
     await clickStartBidding(gala, card.planId);
-    expect(eventLines(await readView(gala))).toEqual(["I bid $90 for you. I’ll go up to $120."]);
+    expect(eventLines(await readView(gala))).toEqual([PLAN_STARTED, "I bid $90 for you. I’ll go up to $120."]);
   });
 });
 
@@ -168,7 +175,8 @@ describe("under load", () => {
       [gala.jamie],
     );
     expect(facts[0]?.n).toBeGreaterThan(3);
-    expect(counts).toEqual({ actions: facts[0]?.n, cards: facts[0]?.n, distinct_sources: facts[0]?.n });
+    const n = facts[0]?.n ?? 0;
+    expect(counts).toEqual({ actions: n, cards: n + 1, distinct_sources: n });
     expect(eventLines(await readView(gala))).toContain("Bidding closed. You won at $90.");
   });
 });
@@ -198,6 +206,7 @@ describe("an autopilot move", () => {
     expect(await syncEventCards({ pool })).toBe(0);
     const view = await readView(gala);
     expect(eventLines(view)).toEqual([
+      PLAN_STARTED,
       "I bid $90 for you. I’ll go up to $120.",
       "Someone bid $360. I raised to $380, your limit for this lot.",
       "Someone bid $400, over your $380 limit.",

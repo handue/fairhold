@@ -159,6 +159,10 @@ export type RejectReason =
   | "hold_not_higher"
   | "hold_out_of_range"
   | "hold_at_maximum"
+  /** Even the event's maximum bidding power would not cover the lot's next bid (design/22 #6). */
+  | "raise_cannot_cover"
+  /** The suggested bidding power would not cover the lot's next bid beside what is committed. */
+  | "hold_too_low"
   /** A lot the guest both planned and ruled out. */
   | "excluded_and_planned"
   // Autopilot decisions (src/server/glim/autopilot/validate.ts). Stored as text, so no migration.

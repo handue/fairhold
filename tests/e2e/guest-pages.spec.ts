@@ -93,6 +93,8 @@ test.describe("05 lot detail", () => {
 
   test("answers an unknown lot with a 404 page", async ({ page }) => {
     await open(page, `${CATALOG}/lots/99`);
-    await expect(page.getByText("This page could not be found.")).toBeVisible();
+    // The event's own not-found page (src/app/e/[slug]/not-found.tsx).
+    await expect(page.getByRole("heading", { name: "We could not find this page" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Back to the lots" })).toHaveAttribute("href", CATALOG);
   });
 });

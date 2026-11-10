@@ -16,6 +16,7 @@ import { useLiveRecords, useLiveServerNow } from "../live/LiveStream";
 import { catalogHref, type GuestLinks } from "../routes";
 import { ServerClockProvider } from "../ServerClock";
 
+import { powerOnLot, soldToPaddleNumber } from "./bid-card-state";
 import { BidCard } from "./BidCard";
 import { BidHistory } from "./BidHistory";
 import { LotGallery } from "./LotGallery";
@@ -29,6 +30,7 @@ export function LotDetailScreen({ seed, links }: { seed: LotDetailSeed; links: G
   const view = useMemo(() => buildLotDetailView(records), [records]);
   const serverNow = useLiveServerNow(seed.now);
   const { lot } = view;
+  const power = useMemo(() => powerOnLot(records, records.lot.id), [records]);
   const category = CATEGORY_LABELS[lot.category];
   const lotLabel = `Lot ${formatLotNumber(lot.number)}`;
 
@@ -59,7 +61,14 @@ export function LotDetailScreen({ seed, links }: { seed: LotDetailSeed; links: G
             </Eyebrow>
             <h1 className="mt-8 text-34 leading-[1.12] font-semibold tracking-title">{lot.title}</h1>
             <p className="mt-8 text-14 text-muted">{donationLine(lot)}</p>
-            <BidCard lot={lot} links={links} timeZone={view.event.timeZone} />
+            <BidCard
+              lot={lot}
+              event={view.event}
+              power={power}
+              soldTo={soldToPaddleNumber(lot, view.history)}
+              viewerPaddle={view.viewer?.paddleNumber ?? null}
+              links={links}
+            />
             <BidHistory entries={view.history} bidCount={lot.bidCount} />
           </div>
         </div>

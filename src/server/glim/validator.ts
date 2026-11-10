@@ -292,6 +292,23 @@ export function clampPlan(intent: PlanIntent, state: GlimState): ClampedPlan {
   return { intent: clamped, allocation: recheck.allocation, adjustments };
 }
 
+/**
+ * What bidding power each lot a raise is for would need: its next bid on top of everything already
+ * committed on other lots (a running plan reserves its maximums). design/22 #5 and #6: a raise is
+ * offered only when the event's maximum could cover that, so "Can you also get me the cabin?" gets
+ * a raise to $1,000 with $320 bid by hand, and a plain "it won't fit" with a $500 plan running.
+ */
+export function raiseNeeds(lotNumbers: readonly number[], state: GlimState): { lot: GlimLotState; outsideCents: number; neededCents: number }[] {
+  return [...new Set(lotNumbers)].flatMap((lotNumber) => {
+    const lot = state.lots.find((candidate) => candidate.number === lotNumber);
+    if (!lot || !isOpenForBids(lot, state.now) || lot.guestStatus === "winning") return [];
+    const outsideCents = state.commitments
+      .filter((commitment) => commitment.lotNumber !== lotNumber)
+      .reduce((sum, commitment) => sum + commitment.cents, 0);
+    return [{ lot, outsideCents, neededCents: outsideCents + lot.nextMinimumCents }];
+  });
+}
+
 export function checkHoldSuggestion(intent: HoldSuggestionIntent, state: GlimState): ValidationIssue[] {
   const { holdMinCents, holdMaxCents } = state.event;
   const issues: ValidationIssue[] = [];
@@ -301,6 +318,18 @@ export function checkHoldSuggestion(intent: HoldSuggestionIntent, state: GlimSta
         amountCents: intent.amountCents,
         limitCents: holdMaxCents,
       }),
+    );
+    return issues;
+  }
+  const needs = raiseNeeds(intent.lotNumbers, state);
+  const beyond = needs.find((need) => need.neededCents > holdMaxCents);
+  if (beyond) {
+    issues.push(
+      issue(
+        "raise_cannot_cover",
+        `Even at this event's maximum of ${formatUsd(holdMaxCents)} of bidding power, ${lotLabel(beyond.lot)}'s next bid of ${formatUsd(beyond.lot.nextMinimumCents)} doesn't fit beside the ${formatUsd(beyond.outsideCents)} already committed. Offer no raise: tell the guest in a sentence that it won't fit.`,
+        { lot: beyond.lot, amountCents: beyond.neededCents, limitCents: holdMaxCents },
+      ),
     );
     return issues;
   }
@@ -322,12 +351,24 @@ export function checkHoldSuggestion(intent: HoldSuggestionIntent, state: GlimSta
       ),
     );
   }
+  const short = needs.find((need) => need.neededCents > intent.amountCents);
+  if (short && intent.amountCents <= holdMaxCents) {
+    issues.push(
+      issue(
+        "hold_too_low",
+        `${formatUsd(intent.amountCents)} would not cover ${lotLabel(short.lot)}'s next bid of ${formatUsd(short.lot.nextMinimumCents)} beside the ${formatUsd(short.outsideCents)} already committed; it needs at least ${formatUsd(short.neededCents)}.`,
+        { lot: short.lot, amountCents: intent.amountCents, limitCents: short.neededCents },
+      ),
+    );
+  }
   return issues;
 }
 
 /**
  * Moves a suggestion into the allowed range: one that isn't a raise becomes the next preset above
- * the current hold. Null when bidding power cannot go any higher.
+ * the current hold, and one too small for its lots the smallest preset that covers them (else that
+ * amount in whole dollars). Null when bidding power cannot go any higher, or when even the event's
+ * maximum would not cover a lot the raise is for (design/22 #6).
  */
 export function clampHoldSuggestion(
   intent: HoldSuggestionIntent,
@@ -337,9 +378,15 @@ export function clampHoldSuggestion(
   const { holdMinCents, holdMaxCents, holdPresetsCents } = state.event;
   const holdCents = state.holdCents;
   if (holdCents !== null && holdCents >= holdMaxCents) return { amountCents: null, adjustments };
+  if (adjustments.some((adjustment) => adjustment.reason === "raise_cannot_cover")) return { amountCents: null, adjustments };
+  const presets = [...holdPresetsCents].sort((a, b) => a - b);
   let amountCents = intent.amountCents;
   if (holdCents !== null && amountCents <= holdCents) {
-    amountCents = [...holdPresetsCents].sort((a, b) => a - b).find((preset) => preset > holdCents) ?? holdMaxCents;
+    amountCents = presets.find((preset) => preset > holdCents) ?? holdMaxCents;
+  }
+  const neededCents = Math.max(0, ...raiseNeeds(intent.lotNumbers, state).map((need) => need.neededCents));
+  if (amountCents < neededCents) {
+    amountCents = presets.find((preset) => preset >= neededCents) ?? Math.ceil(neededCents / 100) * 100;
   }
   return { amountCents: Math.min(holdMaxCents, Math.max(holdMinCents, amountCents)), adjustments };
 }

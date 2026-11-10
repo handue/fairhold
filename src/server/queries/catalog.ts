@@ -14,6 +14,11 @@ export interface CatalogQuery {
 /** 08's rows, and the stream position they include every row up to. */
 export interface CatalogSeed extends CatalogInputs {
   streamPosition: string;
+  /**
+   * Paddle numbers by paddle id, for every paddle leading or holding a lot when the page was read:
+   * a closed tile's "Sold to Paddle 117". The page learns later leaders from the stream's bids.
+   */
+  paddleNumbers: Readonly<Record<string, number>>;
 }
 
 /**
@@ -32,8 +37,12 @@ export async function getCatalogSeed(query: CatalogQuery, source?: GuestReadSour
     reads.listLots(event.id),
     query.paddleNumber === null ? null : reads.findPaddle(event.id, query.paddleNumber),
   ]);
-  const viewerLots = paddle ? await reads.listViewerLots(event.id, paddle.id) : [];
-  return { streamPosition, now, event, lots, paddle, viewerLots, category: query.category };
+  const [viewerLots, leaders] = await Promise.all([
+    paddle ? reads.listViewerLots(event.id, paddle.id) : Promise.resolve([]),
+    reads.listLeaderNumbers?.(event.id) ?? Promise.resolve([]),
+  ]);
+  const paddleNumbers = Object.fromEntries(leaders.map((leader) => [leader.paddleId, leader.number]));
+  return { streamPosition, now, event, lots, paddle, viewerLots, category: query.category, paddleNumbers };
 }
 
 /** Screen 08: the event, the viewer's bidding power and every lot. Null when the event is unknown. */

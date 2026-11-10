@@ -11,6 +11,7 @@ import {
   PaginationModule,
   PinnedRowModule,
   QuickFilterModule,
+  RowApiModule,
   RowStyleModule,
   TooltipModule,
   themeQuartz,
@@ -27,24 +28,27 @@ import {
 import { AgGridReact } from "ag-grid-react";
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObject } from "react";
 
+import { isSimulatedId } from "@/server/paypal/simulated-ids";
 import type { LedgerPhase, LedgerRow } from "@/server/settlement/types";
-import { Button } from "@/ui/Button";
 import { formatPaddleNumber, formatUsd } from "@/ui/format";
 import { Money } from "@/ui/Money";
 import { Orb } from "@/ui/Orb";
+import { PaddleMark } from "@/ui/PaddleMark";
 
 import {
-  canRetry,
   csvSafe,
   diffLedgerRows,
   filterPasses,
   holdKindLabel,
   itemStatusLabel,
+  itemStatusTone,
   LEDGER_PAGE_SIZE,
   lotsColumnHeader,
+  rowActionLabels,
   rowStatusClass,
   type LedgerFilter,
 } from "./ledger-model";
+import { Spinner } from "./Spinner";
 
 import "./ledger.css";
 
@@ -59,6 +63,7 @@ const MODULES: Module[] = [
   PinnedRowModule,
   QuickFilterModule,
   ExternalFilterModule,
+  RowApiModule,
   CsvExportModule,
   TooltipModule,
   HighlightChangesModule,
@@ -99,8 +104,9 @@ const LEDGER_THEME = themeQuartz.withParams({
   focusShadow: { spread: 2, color: "var(--color-ink)" },
   // A cell flashes lime when a bid or a charge changes it: lime as a fill under black text.
   valueChangeValueHighlightBackgroundColor: "var(--color-lime)",
-  // Keeps the page's height while a filter shows fewer than ten rows.
-  autoHeightMinBodyHeight: "480px",
+  // Keeps the page's height while a filter shows fewer than ten rows, and grows the ledger with a
+  // rail that holds more than 12's (ControlRoomScreen sets the variable).
+  autoHeightMinBodyHeight: "var(--ledger-body-min, 480px)",
 });
 
 /** 12's sort arrow in place of the grid's own. */
@@ -133,6 +139,12 @@ function TextCell({ valueFormatted, value }: ICellRendererParams<LedgerRow, stri
   return <span className="ledger-ell">{valueFormatted ?? value}</span>;
 }
 
+/** A failed check's row: the pill stands where its hold was (design/24 §5). */
+function HeldCell(params: ICellRendererParams<LedgerRow, number, GridContext>) {
+  const flag = params.data && !params.node.rowPinned ? params.context.flagged.get(params.data.paddleNumber) : undefined;
+  return flag ? <span className="ledger-pill">{flag}</span> : <MoneyCell {...params} />;
+}
+
 function GlimCell({ data, node }: ICellRendererParams<LedgerRow, boolean>) {
   if (node.rowPinned) return null;
   return data?.glim ? (
@@ -146,21 +158,62 @@ function GlimCell({ data, node }: ICellRendererParams<LedgerRow, boolean>) {
 
 interface GridContext {
   onRetry: (itemId: string) => void;
+  /** Paddle numbers a failed check names, with the pill their Held cell shows. */
+  flagged: ReadonlyMap<number, string>;
 }
 
+const CHECK_PATH = "M5 12.5l4.5 4.5L19 7.5";
+
+/** design/24's Status cell: 13b's check and hollow ring, 10's lime chip, 08's ink pill for what needs action. */
 function StatusCell({ data, node, context }: ICellRendererParams<LedgerRow, string, GridContext>) {
   const item = data?.item;
   if (node.rowPinned || !item) return null;
-  return (
-    <>
-      <span>{itemStatusLabel(item)}</span>
-      {canRetry(item) && (
-        <Button variant="quiet" size={30} onClick={() => context.onRetry(item.id)}>
-          Retry
-        </Button>
-      )}
-    </>
-  );
+  const label = itemStatusLabel(item);
+  const actions = rowActionLabels(item);
+  if (actions) {
+    return (
+      <span className="ledger-actions">
+        <span className="ledger-pill">{actions.pill}</span>
+        <button type="button" className="ledger-retry" onClick={() => context.onRetry(item.id)} aria-label={`${actions.button}, paddle ${formatPaddleNumber(data.paddleNumber)}`}>
+          {actions.button}
+        </button>
+      </span>
+    );
+  }
+  switch (itemStatusTone(item)) {
+    case "charged":
+      return (
+        <span className="ledger-chip">
+          <PaddleMark tone="winning" size={13} />
+          {label}
+        </span>
+      );
+    case "queued":
+      return (
+        <span className="ledger-st ledger-st-queued">
+          <span className="ledger-ring" aria-hidden="true" />
+          {label}
+        </span>
+      );
+    case "working":
+      return (
+        <span className="ledger-st ledger-st-now">
+          <Spinner size={18} />
+          {label}
+        </span>
+      );
+    default:
+      return (
+        <span className={itemStatusTone(item) === "released" ? "ledger-st ledger-st-now" : "ledger-st"}>
+          <span className="ledger-check" aria-hidden="true">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d={CHECK_PATH} />
+            </svg>
+          </span>
+          {label}
+        </span>
+      );
+  }
 }
 
 export interface LedgerPager {
@@ -184,6 +237,8 @@ interface LedgerGridProps {
   search: string;
   /** The event's slug, for the CSV's file name. */
   slug: string;
+  /** Before charging, the paddles a failed check names. */
+  flagged: ReadonlyMap<number, string>;
   onRetry: (itemId: string) => void;
   onPager: (pager: LedgerPager) => void;
   handleRef: RefObject<LedgerGridHandle | null>;
@@ -209,6 +264,7 @@ export default function LedgerGrid({
   filter,
   search,
   slug,
+  flagged,
   onRetry,
   onPager,
   handleRef,
@@ -220,6 +276,8 @@ export default function LedgerGrid({
 
   const settling = phase === "charging" || phase === "charged" || phase === "failed";
   const charged = phase === "charged";
+  // "Waiting" and "Ask again" need a little more room than "Failed" and "Retry".
+  const waiting = rows.some((row) => row.item?.status === "pending");
 
   const columns = useMemo<ColDef<LedgerRow>[]>(
     () => [
@@ -263,6 +321,7 @@ export default function LedgerGrid({
         field: "heldCents",
         width: 88,
         hide: settling,
+        cellRenderer: HeldCell,
         cellClass: "ag-right-aligned-cell ledger-amount ledger-soft",
       },
       {
@@ -285,7 +344,7 @@ export default function LedgerGrid({
       {
         colId: "status",
         headerName: "Status",
-        width: 144,
+        width: waiting ? 176 : 150,
         hide: !settling,
         cellClass: "ledger-status",
         valueGetter: ({ data }) => (data?.item ? itemStatusLabel(data.item) : ""),
@@ -299,10 +358,13 @@ export default function LedgerGrid({
         colId: "transaction",
         headerName: "PayPal transaction ID",
         hide: true,
-        valueGetter: ({ data }) => data?.item?.paypalCaptureId ?? "",
+        valueGetter: ({ data }) => {
+          const id = data?.item?.paypalCaptureId;
+          return id ? (isSimulatedId(id) ? "Simulated" : id) : "";
+        },
       },
     ],
-    [phase, settling, charged],
+    [phase, settling, charged, waiting],
   );
 
   const defaultColDef = useMemo<ColDef<LedgerRow>>(
@@ -316,7 +378,11 @@ export default function LedgerGrid({
     (node: IRowNode<LedgerRow>) => (node.data ? filterPasses(filterRef.current, node.data) : false),
     [],
   );
-  const context = useMemo<GridContext>(() => ({ onRetry }), [onRetry]);
+  const context = useMemo<GridContext>(() => ({ onRetry, flagged }), [onRetry, flagged]);
+  // A failed check marks rows the rows' own data does not change, so they are drawn again.
+  useEffect(() => {
+    api.current?.redrawRows();
+  }, [flagged]);
 
   const reportPager = useCallback(() => {
     const grid = api.current;
@@ -402,5 +468,8 @@ export default function LedgerGrid({
 const ROW_CLASS_RULES = {
   "ledger-row-charging": ({ data }: RowClassParams<LedgerRow>) => rowStatusClass(data?.item ?? null) === "charging",
   "ledger-row-charged": ({ data }: RowClassParams<LedgerRow>) => rowStatusClass(data?.item ?? null) === "charged",
-  "ledger-row-failed": ({ data }: RowClassParams<LedgerRow>) => rowStatusClass(data?.item ?? null) === "failed",
+  // The row that needs the organizer: 12's Surface (design/24 §4, §5).
+  "ledger-row-failed": ({ data, context, node }: RowClassParams<LedgerRow, GridContext>) =>
+    !node.rowPinned &&
+    (rowStatusClass(data?.item ?? null) === "failed" || (data !== undefined && context.flagged.has(data.paddleNumber))),
 };

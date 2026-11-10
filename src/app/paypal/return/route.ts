@@ -2,10 +2,22 @@
  * PayPal's return_url: the buyer approved the hold. Authorizes the order, stores the authorization
  * on the hold and tells the opener. PayPal appends ?token=<order id>&PayerID=... to the
  * ?hold=<hold id>&next=<path> that Fairhold put in the URL.
+ *
+ * design/17: frame 2, "Approving your hold…", shows while PayPal places the hold, when that takes
+ * longer than a moment; then frame 3, "Approved", or the outcome's own page.
  */
 import { completeHoldApproval, type ApprovalOutcome } from "@/server/paypal/holds";
 import { formatUsd } from "@/server/paypal/money";
-import { backHrefFor, paypalWindowResponse, retryHrefFor, type PaypalWindowPage } from "@/server/paypal/window-page";
+import {
+  backHrefFor,
+  paypalWindowResponse,
+  paypalWindowResponseWhenReady,
+  retryHrefFor,
+  windowEyebrow,
+  type PaypalWindowPage,
+} from "@/server/paypal/window-page";
+
+import { windowContextForHold } from "../window-context";
 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -13,20 +25,31 @@ export async function GET(request: Request): Promise<Response> {
   const next = url.searchParams.get("next");
   if (!holdId) return paypalWindowResponse(unknownHold(next, 400));
 
-  try {
-    const outcome = await completeHoldApproval({ holdId, orderId: url.searchParams.get("token") });
-    return paypalWindowResponse(pageFor(outcome, next));
-  } catch (error) {
-    console.error(`[paypal/return] hold ${holdId}:`, error);
-    return paypalWindowResponse({
-      status: 500,
-      outcome: "error",
-      holdId,
-      heading: "Something went wrong",
-      detail: "We could not confirm this hold. Nothing new was charged. Please go back and try again.",
-      backHref: backHrefFor(next, null),
-    });
-  }
+  const outcome = completeHoldApproval({ holdId, orderId: url.searchParams.get("token") }).then(
+    (approval) => pageFor(approval, next),
+    (error: unknown): PaypalWindowPage => {
+      console.error(`[paypal/return] hold ${holdId}:`, error);
+      return {
+        status: 500,
+        outcome: "error",
+        holdId,
+        heading: "Something went wrong",
+        detail: "We could not confirm this hold. Nothing new was charged. Please go back and try again.",
+        backHref: backHrefFor(next, null),
+      };
+    },
+  );
+  const context = await windowContextForHold(holdId);
+  const eyebrow = windowEyebrow(context);
+  return paypalWindowResponseWhenReady(
+    outcome.then((page) => ({ ...page, eyebrow })),
+    {
+      heading: "Approving your hold…",
+      detail: `Confirming your ${context ? `${formatUsd(context.amountCents)} ` : ""}hold with PayPal.\nThis takes a few seconds.`,
+      eyebrow,
+      icon: "lock",
+    },
+  );
 }
 
 function pageFor(outcome: ApprovalOutcome, next: string | null): PaypalWindowPage {
@@ -40,8 +63,8 @@ function pageFor(outcome: ApprovalOutcome, next: string | null): PaypalWindowPag
         ...shared,
         status: 200,
         outcome: "approved",
-        heading: "Bidding power is set",
-        detail: `${formatUsd(hold.amountCents)} is on hold with PayPal. You pay only for what you win. You can close this window.`,
+        heading: "Approved",
+        detail: `${formatUsd(hold.amountCents)} is held with PayPal.\nYou can close this window.`,
       };
     case "pending":
       return {

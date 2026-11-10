@@ -38,7 +38,8 @@ export function PowerScreen({ view, links, returnHref, initialCents }: PowerScre
         returnHref={returnHref}
         initialCents={initialCents}
       />
-      <CornerOrb bubble={NOT_SURE_BUBBLE} />
+      {/* Once bidding has closed there is no amount to suggest. */}
+      <CornerOrb bubble={biddingEnded ? undefined : NOT_SURE_BUBBLE} />
     </>
   );
 }

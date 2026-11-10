@@ -13,7 +13,7 @@ import {
   type GlimMessage,
   type StreamingMessagesClient,
 } from "@/server/glim/client";
-import { FALLBACK_LINE } from "@/server/glim/copy";
+import { ERROR_LINE, FALLBACK_LINE } from "@/server/glim/copy";
 import { GLIM_SYSTEM_PROMPT } from "@/server/glim/prompt";
 import { GLIM_TOOLS } from "@/server/glim/tools";
 import { guestMessage, snapshotMessage } from "@/server/glim/transcript";
@@ -190,13 +190,15 @@ describe("callGlimModel", () => {
       recommended_model: null,
     };
     const result = await callGlimModel(scriptedModel(() => refused).model, REQUEST);
-    expect(result).toMatchObject({ ok: false, failure: "refusal", reply: FALLBACK_LINE, detail: "cyber" });
+    expect(result).toMatchObject({ ok: false, failure: "refusal", reply: ERROR_LINE, detail: "cyber" });
+    // design/22 #4: the approved line, with its reason in front of it.
     expect(FALLBACK_LINE).toBe("You can still bid yourself.");
+    expect(ERROR_LINE).toBe("I can’t answer right now. You can still bid yourself.");
   });
 
   it("drops a reply cut off at max_tokens", async () => {
     const result = await callGlimModel(scriptedModel(() => modelReply([], "max_tokens")).model, REQUEST);
-    expect(result).toMatchObject({ ok: false, failure: "truncated", reply: FALLBACK_LINE });
+    expect(result).toMatchObject({ ok: false, failure: "truncated", reply: ERROR_LINE });
   });
 
   it("classifies API errors without throwing", async () => {
@@ -210,7 +212,7 @@ describe("callGlimModel", () => {
     ] as const;
     for (const [error, failure, detail] of cases) {
       const result = await callGlimModel(failingWith(error), REQUEST);
-      expect(result).toMatchObject({ ok: false, failure, detail, reply: FALLBACK_LINE });
+      expect(result).toMatchObject({ ok: false, failure, detail, reply: ERROR_LINE });
     }
   });
 });

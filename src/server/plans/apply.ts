@@ -26,6 +26,7 @@ import type { AppliedFacts } from "@/server/glim/autopilot/copy";
 import type { AutopilotChange, AutopilotDecisionLot } from "@/server/glim/autopilot/types";
 import { inconsistentChange, mandateViolations, MAX_RAISES_PER_PADDLE } from "@/server/glim/autopilot/validate";
 import { CLOSE_MARGIN_MS, mandateFromConfirmedCard, parseMandate, type GlimMandate } from "@/server/glim/mandate";
+import { planLine } from "@/server/glim/copy";
 import { formatUsd } from "@/server/glim/money";
 import type { ValidationIssue } from "@/server/glim/types";
 import { appendEventLog } from "@/server/sse/notify";
@@ -496,10 +497,13 @@ export async function prepareAutopilotRaise(input: PrepareRaiseInput): Promise<P
     const raises = await client.query<{ count: number; pending: boolean }>(
       `select count(*)::int as count,
          coalesce(bool_or(a.created_at > now() - make_interval(secs => $2) and a.amount_cents > $3
+           and a.plan_id = $4
+           and not (coalesce(a.detail, '{}'::jsonb) ? 'dismissedAt')
            and not exists (select 1 from glim_actions c where c.paddle_id = a.paddle_id
                            and c.kind = 'autopilot_changed' and c.created_at > a.created_at)), false) as pending
        from glim_actions a where a.paddle_id = $1 and a.kind = 'autopilot_raise_prepared'`,
-      [paddleId, RAISE_PENDING_SECONDS, hold],
+      // An offer for a plan the guest has since replaced ended with that plan (raise-offer.ts).
+      [paddleId, RAISE_PENDING_SECONDS, hold, plan.id],
     );
     if ((raises.rows[0]?.count ?? 0) >= MAX_RAISES_PER_PADDLE) return refused("raise_limit_reached");
     if (raises.rows[0]?.pending) return refused("raise_pending");
@@ -554,6 +558,10 @@ export type ConfirmPlanResult =
       limits: LimitView[];
       bids: PlacedBid[];
       actionId: string;
+      /** True when the card replaced a running or paused plan: an edit (design/22 #18), not a start. */
+      replaced: boolean;
+      /** The plan's lots and maximums in one line, as the "Plan started" card reads. */
+      message: string;
     }
   | { ok: false; reason: "not_found" | "not_proposed" | "invalid_card" | "empty_card" }
   | { ok: false; reason: "refused"; refusal: Refusal };
@@ -638,17 +646,11 @@ export async function confirmPlan(input: { paddleId: string; proposedPlanId: str
 
     const hold = await authorizedHold(client, paddleId);
     const actionId = randomUUID();
+    const message = planLine(card.items);
     await client.query(
       `insert into glim_actions (id, paddle_id, plan_id, kind, amount_cents, hold_cents_at_time, decision, message, chip)
-       values ($1, $2, $3, 'plan_started', $4, $5, 'executed', $6, 'none')`,
-      [
-        actionId,
-        paddleId,
-        proposed.id,
-        card.totalCents,
-        hold,
-        `${card.items.map((item) => `${item.shortTitle} up to ${formatUsd(item.maxCents)}`).join(", ")}.`,
-      ],
+       values ($1, $2, $3, $4, $5, $6, 'executed', $7, 'none')`,
+      [actionId, paddleId, proposed.id, running ? "plan_edited" : "plan_started", card.totalCents, hold, message],
     );
     const glimBidIds = created.bids.filter((bid) => bid.paddleId === paddleId && bid.source === "glim").map((bid) => bid.id);
     if (glimBidIds.length > 0) {
@@ -666,7 +668,7 @@ export async function confirmPlan(input: { paddleId: string; proposedPlanId: str
         [paddleId, eventId],
       );
     }
-    return { ok: true, planId: proposed.id, mandate, limits: created.limits, bids: created.bids, actionId };
+    return { ok: true, planId: proposed.id, mandate, limits: created.limits, bids: created.bids, actionId, replaced: running !== null, message };
   });
 }
 

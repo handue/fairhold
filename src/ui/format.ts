@@ -75,6 +75,16 @@ export function formatClockTime(at: number, timeZone: string): string {
   return `${hour}:${minute} ${period.toUpperCase()}`;
 }
 
+/**
+ * A close that has happened, to the nearest minute. Lots close on the second (Lot 07 at 9:16:42 reads
+ * "9:17 PM", src/server/demo/README.md), and "Close bidding now" ends the gala and its open lots on
+ * the same second, so every page that names a past close rounds it this one way. A close still ahead
+ * keeps formatClockTime, which never names a minute later than the real one.
+ */
+export function formatClosedTime(at: number, timeZone: string): string {
+  return formatClockTime(Math.round(at / MINUTE) * MINUTE, timeZone);
+}
+
 /** "Sat 7:00 PM" in the event's time zone. */
 export function formatWeekdayTime(at: number, timeZone: string): string {
   return `${timeParts(at, timeZone).weekday} ${formatClockTime(at, timeZone)}`;

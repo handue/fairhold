@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type { PaypalWindowOutcome } from "@/app/paypal/window-message";
@@ -6,6 +9,7 @@ import {
   holdFlowCopy,
   holdFlowReducer,
   IDLE,
+  PAYPAL_UNAVAILABLE_LINE,
   watchedHoldId,
   type HoldFlowEvent,
   type HoldFlowState,
@@ -124,9 +128,11 @@ describe("holdFlowCopy", () => {
       button: "Hold $500 with PayPal",
       buttonEnabled: true,
       locked: false,
+      status: null,
       notice: null,
       trust: null,
       continueHref: null,
+      amountNote: null,
     });
     expect(holdFlowCopy(IDLE, 1_000_00).button).toBe("Hold $1,000 with PayPal");
   });
@@ -135,24 +141,66 @@ describe("holdFlowCopy", () => {
     expect(holdFlowCopy(IDLE, null)).toMatchObject({ button: "Hold with PayPal", buttonEnabled: false });
   });
 
-  it("locks the amount and offers this tab while the window is open", () => {
+  it("shows frame 9 while the window is open: a status, the amount locked, and this tab", () => {
     expect(holdFlowCopy(run(OPENED), 500_00)).toMatchObject({
       button: "Finish in the PayPal window",
       buttonEnabled: false,
       locked: true,
+      status: "waiting",
       trust: "Nothing is held until you approve.",
       continueHref: "https://paypal.example/a",
+      amountNote: "Can’t change while the PayPal window is open",
     });
   });
 
-  it("promises nothing was held after a cancel or a failure, and offers the button again", () => {
+  it("waits the same way while the window opens, with no tab to offer yet", () => {
+    expect(holdFlowCopy(run([{ type: "start", amountCents: 500_00 }]), 500_00)).toMatchObject({
+      button: "Opening PayPal…",
+      status: "waiting",
+      locked: true,
+      continueHref: null,
+    });
+  });
+
+  it("shows frame 10 after a cancel: nothing was held, and Try again", () => {
     const canceled = holdFlowCopy(run([...OPENED, { type: "window_outcome", outcome: "canceled" }]), 500_00);
-    expect(canceled).toMatchObject({ button: "Hold $500 with PayPal", buttonEnabled: true, locked: false });
-    expect(canceled.notice).toContain("Nothing was held");
+    expect(canceled).toMatchObject({ button: "Try again", buttonEnabled: true, locked: false, status: null });
+    expect(canceled.notice).toEqual({ mark: "canceled", title: "Canceled in PayPal", body: "Nothing was held." });
+  });
+
+  it("shows frame 11 when PayPal fails, whether in the window or before it opened", () => {
+    const failed = holdFlowCopy(run([...OPENED, { type: "window_outcome", outcome: "error" }]), 500_00);
+    expect(failed).toMatchObject({ button: "Try again", buttonEnabled: true });
+    expect(failed.notice).toEqual({ mark: "failed", title: "PayPal didn’t respond", body: "Nothing was held." });
+
+    const unavailable = run([{ type: "start", amountCents: 500_00 }, { type: "create_failed", message: PAYPAL_UNAVAILABLE_LINE }]);
+    expect(holdFlowCopy(unavailable, 500_00).notice).toEqual(failed.notice);
 
     const declined = holdFlowCopy(run([...OPENED, { type: "window_outcome", outcome: "declined" }]), 500_00);
-    expect(declined).toMatchObject({ buttonEnabled: true });
-    expect(declined.notice).toContain("Nothing was held");
+    expect(declined.notice).toMatchObject({ title: "PayPal declined the hold" });
+    expect(declined.notice?.body).toContain("Nothing was held.");
+  });
+
+  it("titles any other refusal with the server's sentence", () => {
+    const refused = run([
+      { type: "start", amountCents: 500_00 },
+      { type: "create_failed", message: "Bidding has closed for this event." },
+    ]);
+    expect(holdFlowCopy(refused, 500_00).notice).toEqual({
+      mark: "failed",
+      title: "Bidding has closed for this event.",
+      body: "Nothing was held.",
+    });
+  });
+
+  it("keeps the API's PayPal sentence, so frame 11 knows it", () => {
+    const source = readFileSync(path.join(process.cwd(), "src/server/holds/create.ts"), "utf8");
+    expect(source).toContain(JSON.stringify(PAYPAL_UNAVAILABLE_LINE));
+  });
+
+  it("offers the button, not Try again, once the amount can't be held", () => {
+    const canceled = run([...OPENED, { type: "window_outcome", outcome: "canceled" }]);
+    expect(holdFlowCopy(canceled, null)).toMatchObject({ button: "Hold with PayPal", buttonEnabled: false });
   });
 
   it("says the hold landed, for the amount that landed", () => {
@@ -161,20 +209,21 @@ describe("holdFlowCopy", () => {
     expect(holdFlowCopy(approved, null)).toMatchObject({
       button: "$500 is on hold with PayPal",
       buttonEnabled: false,
+      status: "done",
       trust: "Taking you back to bid…",
     });
   });
 
   it("does not lock the guest out while PayPal is still confirming", () => {
     const copy = holdFlowCopy(run([...OPENED, { type: "window_outcome", outcome: "pending" }]), 500_00);
-    expect(copy).toMatchObject({ button: "Hold $500 with PayPal", buttonEnabled: true, locked: false });
-    expect(copy.notice).toContain("Still confirming with PayPal");
+    expect(copy).toMatchObject({ button: "Hold $500 with PayPal", buttonEnabled: true, locked: false, status: null });
+    expect(copy.notice).toMatchObject({ mark: "confirming", title: "Still confirming with PayPal" });
   });
 
   it("lets the guest start over when the window is lost, and says it may still be open", () => {
     const copy = holdFlowCopy(run([...OPENED, { type: "window_lost" }]), 500_00);
-    expect(copy).toMatchObject({ button: "Hold $500 with PayPal", buttonEnabled: true, locked: false, continueHref: null });
-    expect(copy.notice).toContain("If it’s still open, finish there");
+    expect(copy).toMatchObject({ button: "Try again", buttonEnabled: true, locked: false, continueHref: null, status: null });
+    expect(copy.notice?.body).toContain("If it’s still open, finish there");
   });
 
   it("uses no word the brand rules forbid", () => {
@@ -189,7 +238,8 @@ describe("holdFlowCopy", () => {
     ];
     for (const state of states) {
       const copy = holdFlowCopy(state, 500_00);
-      expect(`${copy.button} ${copy.notice} ${copy.trust}`).not.toMatch(/FMV|IRS|guarantee|tax/i);
+      const words = `${copy.button} ${copy.notice?.title} ${copy.notice?.body} ${copy.trust} ${copy.amountNote}`;
+      expect(words).not.toMatch(/FMV|IRS|guarantee|tax/i);
     }
   });
 });

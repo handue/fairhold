@@ -37,5 +37,7 @@ async function ControlRoom({ params, searchParams }: Props) {
   if (!view) notFound();
 
   const organizerName = viewer.session?.organizerName ?? viewer.session?.firstName ?? FIXTURE_ORGANIZER;
-  return <ControlRoomScreen initial={view} organizerName={organizerName} />;
+  // In a demo the organizer is also a guest, so once charged the rail links to their own receipt.
+  const receiptHref = view.event.isDemo && viewer.paddleNumber !== null ? `/e/${encodeURIComponent(slug)}/receipt` : null;
+  return <ControlRoomScreen initial={view} organizerName={organizerName} receiptHref={receiptHref} ownPaddle={viewer.paddleNumber} />;
 }

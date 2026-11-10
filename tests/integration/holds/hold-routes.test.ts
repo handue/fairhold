@@ -89,11 +89,13 @@ describe("the hold round trip", () => {
     const page = await returnPage(new Request(approvalUrl));
     expect(page.status).toBe(200);
     const html = await page.text();
-    expect(html).toContain("$500 is on hold with PayPal");
+    // design/17 frame 3, with the hold's event and paddle over the heading.
+    expect(html).toContain("$500 is held with PayPal.");
+    expect(html).toContain("Riverside Shelter Gala · Paddle 142");
     expect(html).toContain(`"holdId":"${holdId}"`);
     expect(html).toContain('"outcome":"approved"');
     expect(html).toContain("window.opener.postMessage");
-    expect(html).toContain(`href="/e/${guest.slug}/lots/07"`);
+    expect(html).toContain(`window.location.replace("/e/${guest.slug}/lots/07")`);
 
     expect(await nav(guest)).toMatchObject({ holdCents: 500_00, availableCents: 500_00 });
     expect(await power(guest.paddleId)).toMatchObject({ holdId, holdCents: 500_00, committedCents: 0 });
@@ -162,7 +164,8 @@ describe("the hold round trip", () => {
     const page = await cancelPage(new Request(cancelUrl));
     const html = await page.text();
     expect(html).toContain('"outcome":"canceled"');
-    expect(html).toContain(`href="/e/${guest.slug}/power?next=%2Fe%2F${guest.slug}%2Flots%2F07"`);
+    // design/17 frame 4 has "Close window"; a full-page trip goes back to bidding power by itself.
+    expect(html).toContain(`window.location.replace("/e/${guest.slug}/power?next=%2Fe%2F${guest.slug}%2Flots%2F07")`);
 
     expect(await nav(guest)).toMatchObject({ holdCents: null });
     await expect((await status(guest, holdId)).json()).resolves.toMatchObject({ status: "canceled" });

@@ -86,8 +86,8 @@
   font-weight: 500;
 }
 .ledger-grid .ledger-status {
-  font-size: 13.5px;
-  gap: 10px;
+  color: var(--color-ink2);
+  font-size: 13px;
 }
 
 /* A page's last row sits on the totals row's own top border. */
@@ -119,10 +119,120 @@
   font-weight: 600;
 }
 
-/* Settlement status: rowClassRules (undrawn on Sheet C's design/24, so plain). */
+/* design/24: the row that needs the organizer, 12's Surface by a row class rule. */
 .ledger-grid .ledger-row-failed {
   background: var(--color-surface);
 }
-.ledger-grid .ledger-row-charging .ledger-status {
+
+/* The Status cell: 13b's check in a circle and hollow ring, 10's lime chip, 08's ink pill. */
+.ledger-grid .ledger-st {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+.ledger-grid .ledger-st-queued {
+  color: var(--color-muted);
+}
+.ledger-grid .ledger-st-now {
+  color: var(--color-ink);
   font-weight: 500;
+}
+.ledger-grid .ledger-check {
+  align-items: center;
+  background: var(--color-surface);
+  border-radius: 9px;
+  color: var(--color-ink);
+  display: flex;
+  flex: none;
+  height: 18px;
+  justify-content: center;
+  width: 18px;
+}
+.ledger-grid .ledger-ring {
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 1.5px #bdbcb7;
+  display: block;
+  flex: none;
+  height: 18px;
+  width: 18px;
+}
+.ledger-grid .ledger-chip {
+  align-items: center;
+  background: var(--color-lime);
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--color-lime-edge);
+  color: var(--color-ink);
+  display: inline-flex;
+  font-size: 11.5px;
+  font-weight: 600;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px 0 6px;
+  white-space: nowrap;
+}
+.ledger-grid .ledger-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+.ledger-grid .ledger-pill,
+.ledger-grid .ledger-retry {
+  align-items: center;
+  border-radius: 12px;
+  display: inline-flex;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  height: 24px;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+.ledger-grid .ledger-pill {
+  background: var(--color-ink);
+  color: var(--color-white);
+}
+.ledger-grid .ledger-retry {
+  border: 1px solid var(--color-ink);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+/* A failed check's pill sits where the hold's amount was, running into the cell's left padding. */
+.ledger-grid .ag-right-aligned-cell .ledger-pill {
+  flex: none;
+}
+
+@keyframes ledger-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ledger-spin {
+  animation: ledger-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ledger-spin {
+    animation: none;
+  }
+}
+
+/*
+ * Insights' "Top lots": every column has AG Grid's filter, but design/28 draws quiet headers, so the
+ * filter button sits over the header's own padding and only shows on hover, on focus or while active.
+ */
+.insights-grid .ag-header-cell-filter-button {
+  opacity: 0;
+  position: absolute;
+  right: 2px;
+  transition: opacity 0.12s;
+}
+.insights-grid .ag-right-aligned-header .ag-header-cell-filter-button {
+  left: 2px;
+  right: auto;
+}
+.insights-grid .ag-header-cell:hover .ag-header-cell-filter-button,
+.insights-grid .ag-header-cell:focus-within .ag-header-cell-filter-button,
+.insights-grid .ag-header-cell-filter-button:has(.ag-filter-active),
+.insights-grid .ag-header-cell-filtered .ag-header-cell-filter-button {
+  opacity: 1;
 }

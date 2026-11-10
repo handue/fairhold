@@ -9,6 +9,7 @@ import type {
   GuestReadSource,
   LotPhotoRecord,
   LotRecord,
+  PaddleNumberRecord,
   PaddleRecord,
   ViewerLotRecord,
 } from "./types";
@@ -156,6 +157,15 @@ export function createPostgresGuestSource(db: Database): GuestReadSource {
         from lot_photos
         where lot_id = ${lotId}
         order by is_cover desc, position
+      `);
+    },
+
+    listLeaderNumbers(eventId) {
+      return select<PaddleNumberRecord>(sql`
+        select distinct p.id::text as "paddleId", p.number::integer as "number"
+        from lots l
+        join paddles p on p.id = l.high_paddle_id or p.id = l.winning_paddle_id
+        where l.event_id = ${eventId} and l.status <> 'draft'
       `);
     },
 

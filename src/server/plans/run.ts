@@ -138,6 +138,8 @@ function describeChange(runId: string, context: AutopilotContext, decision: Auto
           bidIds: applied.bids.filter((bid) => bid.paddleId === applied.paddleId && bid.source === "glim").map((bid) => bid.id),
           adjusted: decision.adjusted,
           amountsCents: lines.amountsCents,
+          // V4: 10's feed row shows the card's chip, "Winning · $220": the bid, not the new maximum.
+          chipCents: lines.chip?.amountCents ?? null,
         },
       },
       card: { ...autopilotCard({ runId, actionId: ids.actionId, context, lines, change, why, whySource }) },

@@ -24,7 +24,7 @@ import {
 } from "./config";
 import { AUTOPILOT_SYSTEM_PROMPT } from "./autopilot/prompt";
 import { DECISION_SCHEMA } from "./autopilot/schema";
-import { FALLBACK_LINE } from "./copy";
+import { ERROR_LINE } from "./copy";
 import { GLIM_SYSTEM_PROMPT } from "./prompt";
 import { createRecordedGlimModel } from "./recorded";
 import { GLIM_TOOL_CHOICE, GLIM_TOOLS } from "./tools";
@@ -198,7 +198,7 @@ export type GlimCallResult =
   | {
       ok: false;
       failure: GlimFailure;
-      /** Always the approved fallback line. */
+      /** Always design/22's error line, which ends in the approved fallback. */
       reply: string;
       /** For error_log: an error class, status and request id, or a refusal category. */
       detail: string | null;
@@ -237,7 +237,7 @@ export async function callGlimModel(
   const fail = (failure: GlimFailure, detail: string | null, usage: GlimTokenUsage = NO_TOKENS): GlimCallResult => ({
     ok: false,
     failure,
-    reply: FALLBACK_LINE,
+    reply: ERROR_LINE,
     detail,
     usage,
     latencyMs: latency(),

@@ -22,8 +22,9 @@ test.beforeEach(async ({ context }) => {
 
 async function startDemo(page: Page, firstName = "Sam"): Promise<string> {
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.getByLabel("First name").fill(firstName);
-  await page.getByRole("button", { name: "Start a demo gala" }).click();
+  // design/16 starts a demo with no name field; the API still takes one, so this spec's creator keeps its name.
+  const started = await page.request.post("/api/demo", { data: { firstName: firstName } });
+  await page.goto(((await started.json()) as { href: string }).href);
   await page.waitForURL(/\/e\/gala-[0-9a-z]{16}$/);
   return new URL(page.url()).pathname.split("/").pop() ?? "";
 }
@@ -47,7 +48,8 @@ async function closeBidding(page: Page, slug: string): Promise<void> {
   expect(closed.status()).toBe(200);
 }
 
-const rail = (page: Page) => page.getByRole("complementary");
+/** The rail, by its eyebrow: other asides (the demo guide) may share the page. */
+const rail = (page: Page) => page.getByRole("complementary").filter({ hasText: /Bidding (open|closed)/ });
 const grid = (page: Page) => page.getByRole("grid");
 
 async function rowOf(page: Page, paddle: number) {
@@ -80,7 +82,9 @@ test("charges a demo: the real hold captured and labeled, the simulated guests l
   await expect(rail(page).getByRole("heading")).toHaveText(/\d+ winners? charged/, { timeout: 30_000 });
   await expect(rail(page)).toContainText("Every hold is settled");
   await expect(rail(page)).toContainText("The 85 simulated guests settled without PayPal.");
-  await expect(rail(page)).toContainText("PayPal transaction ID");
+  // Simulated payments made this charge's id up, so the rail never shows it under PayPal's name.
+  await expect(rail(page)).toContainText(/PayPal transaction ID\s*Simulated/);
+  await expect(rail(page)).not.toContainText("SIMC");
   await expect(rail(page).getByRole("button", { name: /Charge/ })).toHaveCount(0);
 
   await expect(await rowOf(page, 142)).toContainText("Charged");
@@ -91,7 +95,7 @@ test("charges a demo: the real hold captured and labeled, the simulated guests l
   expect(download.suggestedFilename()).toBe(`settlement-ledger-${slug}.csv`);
   const csv = readFileSync(await download.path(), "utf8");
   expect(csv).toContain('"Paddle","Bidder","Hold","Lots won","Glim","Held","Charged","Released","Status","PayPal transaction ID"');
-  expect(csv).toMatch(/"142","Sam","PayPal","Golf Lesson with a Pro","No","\$500","\$75","\$425","Charged","SIMC[0-9A-F]+"/);
+  expect(csv).toMatch(/"142","Sam","PayPal","Golf Lesson with a Pro","No","\$500","\$75","\$425","Charged","Simulated"/);
   expect(csv).toContain("Simulated, no PayPal");
 
   // The page stays right after a reload: this all came from the database.
@@ -122,6 +126,78 @@ test("filters, searches and pages the ledger", async ({ page }) => {
   await page.getByLabel("Search bidders or lots").fill("Rosa M");
   await expect(footer).toContainText("Showing 1 of 1");
   await expect(grid(page)).toContainText("Rosa M.");
+});
+
+test("design/24 §1: bidding open counts down, and Close bidding now on the rail ends it (C3)", async ({ page }) => {
+  const slug = await startDemo(page);
+  await holdFiveHundred(page, slug);
+  await page.goto(`/e/${slug}/organizer`);
+
+  await expect(rail(page).getByRole("heading")).toHaveText(/^Closes in \d+:\d{2}$/);
+  await expect(rail(page)).toContainText("When bidding closes");
+  await expect(rail(page).getByRole("button", { name: "Charge winners" })).toBeDisabled();
+
+  await rail(page).getByRole("button", { name: "Close bidding now" }).click();
+  await expect(rail(page).getByRole("heading")).toHaveText("Ready to charge", { timeout: 30_000 });
+  await expect(rail(page)).toContainText("All passed", { timeout: 30_000 });
+  await expect(rail(page).getByRole("button", { name: /^Charge \d+ winners?$/ })).toBeEnabled();
+});
+
+test("design/24 §5: a failed check names the hold, marks its row and keeps the charge off", async ({ page }) => {
+  const slug = await startDemo(page);
+  await holdFiveHundred(page, slug);
+  await winGolfLesson(page, slug);
+  await closeBidding(page, slug);
+
+  await page.route(`**/api/events/${slug}/settlement/checks`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        checks: {
+          passed: false,
+          ranAt: Date.now(),
+          checks: [
+            { key: "winners_within_holds", passed: true, count: 1, problems: [] },
+            { key: "glim_within_limits", passed: true, count: 0, problems: [] },
+            { key: "holds_valid", passed: false, count: 1, problems: [{ paddleNumber: 142, bidder: "Sam", code: "VOIDED", blocking: true }] },
+          ],
+        },
+      }),
+    }),
+  );
+  await page.goto(`/e/${slug}/organizer`);
+
+  await expect(rail(page).getByRole("heading")).toHaveText("Can’t charge yet");
+  await expect(rail(page)).toContainText("1 failed");
+  await expect(rail(page)).toContainText("1 PayPal hold is no longer valid");
+  await expect(rail(page)).toContainText("Paddle 142 · Sam. PayPal shows it as voided.");
+  await expect(rail(page).getByRole("button", { name: /^Charge \d+ winners?$/ })).toBeDisabled();
+  await expect(rail(page).getByRole("button", { name: "Check again" })).toBeEnabled();
+  await expect(await rowOf(page, 142)).toContainText("Not valid");
+});
+
+test("the rail never stays on Checking… when asking PayPal fails, and Check again asks afresh", async ({ page }) => {
+  const slug = await startDemo(page);
+  await holdFiveHundred(page, slug);
+  await closeBidding(page, slug);
+
+  let failing = true;
+  await page.route(`**/api/events/${slug}/settlement/checks`, (route) =>
+    failing
+      ? route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: { code: "not_joined", message: "Join this event first." } }) })
+      : route.continue(),
+  );
+  await page.goto(`/e/${slug}/organizer`);
+
+  await expect(rail(page)).toContainText("Not checked yet");
+  await expect(rail(page)).not.toContainText("Checking…");
+  await expect(rail(page).getByRole("alert")).toHaveText("Join this event first.");
+  await expect(rail(page).getByRole("button", { name: /^Charge \d+ winners?$/ })).toBeDisabled();
+
+  failing = false;
+  await rail(page).getByRole("button", { name: "Check again" }).click();
+  await expect(rail(page)).toContainText("All passed", { timeout: 30_000 });
+  await expect(rail(page).getByRole("alert")).toHaveCount(0);
 });
 
 test("sends a guest away from the control room, and refuses their POST", async ({ page, browser }) => {

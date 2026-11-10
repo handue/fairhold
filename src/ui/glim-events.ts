@@ -6,6 +6,7 @@
  *   openGlim();                                      // the orb, "Let Glim bid for me"
  *   openGlim({ lotNumber: 7 });                      // "Let Glim watch", "Let the agent bid on this lot"
  *   openGlim({ prefill: "Raise my budget" });        // starts the input with this text, unsent
+ *   openGlim({ edit: true });                        // 10's "Edit plan": the running plan's card opens as fields
  *
  * The panel, once:
  *
@@ -18,6 +19,8 @@ export interface GlimOpenDetail {
   lotNumber?: number;
   /** Text to put in the message input, unsent. */
   prefill?: string;
+  /** Opens the running plan's card in its editor (design/22 #7), as its Edit does. */
+  edit?: boolean;
 }
 
 export function openGlim(detail: GlimOpenDetail = {}): void {

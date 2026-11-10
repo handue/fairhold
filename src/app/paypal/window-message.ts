@@ -14,6 +14,18 @@
  */
 
 export const PAYPAL_WINDOW_CHANNEL = "fairhold:paypal-window";
+
+/**
+ * Set to the hold's id, in sessionStorage, by 09's "Continue to PayPal in this tab" (design/17
+ * frame 5) before it sends its own tab to PayPal. The return and cancel pages then know they are the
+ * gala tab itself, with no window to close, and go back to the auction.
+ */
+export const PAYPAL_IN_TAB_KEY = "fairhold:paypal-in-tab";
+
+/** design/17 frame 1, which the window opens on while the server creates the order. */
+export function paypalStartHref(slug: string, amountCents: number): string {
+  return `/paypal/start?e=${encodeURIComponent(slug)}&amount=${amountCents}`;
+}
 export const PAYPAL_WINDOW_MESSAGE_TYPE = "fairhold:paypal-hold";
 
 /** `refused`: PayPal approved the hold, but the bidding power stayed as it was and the approval was released. */

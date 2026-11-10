@@ -29,6 +29,8 @@ describe("recorded Glim", () => {
       "change-drop-spa",
       "golden-plan",
       "how-am-i-doing",
+      "how-does-a-hold-work",
+      "what-can-you-do",
     ]);
     for (const recording of recordings) {
       for (const response of recording.responses) {

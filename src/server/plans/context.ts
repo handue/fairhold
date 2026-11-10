@@ -21,6 +21,7 @@ import { isOpenForBids } from "@/server/glim/prompt";
 import { loadGlimState } from "@/server/queries/glim-state";
 
 import { PENDING_CARD_SECONDS, RAISE_PENDING_SECONDS } from "./apply";
+import { RAISE_DISMISSED_KEY } from "./raise-offer";
 import { autopilotUsage } from "./usage";
 
 /** A lot autopilot dropped can't be added back by autopilot this soon (§3.5). */
@@ -141,12 +142,13 @@ export async function loadAutopilotRead(
   const actions = await pool.query<{
     id: string;
     kind: AutopilotRecentDecision["kind"];
+    plan_id: string | null;
     message: string;
     amount_cents: number | null;
     created_at: Date;
     detail: unknown;
   }>(
-    `select id, kind, message, amount_cents, created_at, detail from glim_actions
+    `select id, kind, plan_id, message, amount_cents, created_at, detail from glim_actions
      where paddle_id = $1 and kind in ('autopilot_changed', 'autopilot_raise_prepared')
      order by created_at desc, id desc limit 10`,
     [paddleId],
@@ -209,7 +211,7 @@ export async function loadAutopilotRead(
     contestedLotIds: [...new Set(limits.rows.filter((limit) => limit.contested).map((limit) => limit.lot_id))],
     recentlyDroppedLotIds,
     recentDecisions,
-    pendingRaise: pendingRaise(actions.rows[0], state, row.now),
+    pendingRaise: pendingRaise(actions.rows[0], row.plan_id, state, row.now),
     raisesPrepared: row.raises_prepared,
     triggers: [...triggers],
   };
@@ -218,16 +220,22 @@ export async function loadAutopilotRead(
 
 /**
  * The raise waiting for the guest's approval (§6.4): the newest autopilot action, if it is a
- * prepared raise younger than ten minutes, above the hold in place, with all its lots still open.
- * A newer applied decision ends it, and so does a hold that already reached its amount.
+ * prepared raise for the running plan, younger than ten minutes, above the hold in place, with all
+ * its lots still open, that the guest hasn't dismissed with "Not now". A newer applied decision ends
+ * it, and so does a plan edit (Update plan supersedes the plan it was for) or a hold that already
+ * reached its amount.
  */
 function pendingRaise(
-  latest: { id: string; kind: string; amount_cents: number | null; created_at: Date; detail: unknown } | undefined,
+  latest: { id: string; kind: string; plan_id: string | null; amount_cents: number | null; created_at: Date; detail: unknown } | undefined,
+  planId: string,
   state: NonNullable<Awaited<ReturnType<typeof loadGlimState>>>,
   now: Date,
 ): PendingRaise | null {
   if (!latest || latest.kind !== "autopilot_raise_prepared" || latest.amount_cents === null) return null;
+  if (latest.plan_id !== planId) return null;
   if (now.getTime() - latest.created_at.getTime() > RAISE_PENDING_SECONDS * 1000) return null;
+  // The guest's "Not now" ends it: a raise approved later on 09 is not consent to this move.
+  if (typeof latest.detail === "object" && latest.detail !== null && RAISE_DISMISSED_KEY in latest.detail) return null;
   const lots: AutopilotDecisionLot[] = actionDetailSchema.parse(latest.detail).pendingIntent;
   const open = lots.every((lot) => {
     const found = state.lots.find((candidate) => candidate.number === lot.lotNumber);

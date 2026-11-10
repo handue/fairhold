@@ -11,18 +11,22 @@ Owner area: design system and the guest pages' UI. Ported from the approved mock
 
 ## Components
 
-`PaddleMark` (brand, winning, outbid, closed), `Orb` (68, 38, 32, 26, 22, 18; `glow="soft"` for 05's agent link), `StatusPill`, `Button` / `buttonClass` (lime, ink, outline, quiet, ghost at 30/36/40/48/56px), `EventNav` (brand, status pill, links, bidding power and paddle pills), `GlimBand`, `CornerOrb`, `Eyebrow`, `Money`, the line icons, and `drawings/` (`LotIllustration` plus every lot drawing in the approved HTML; `RIVERSIDE_LOT_DRAWINGS` maps template lots to them and the seed stores those keys).
+`PaddleMark` (brand, winning, outbid, closed), `Orb` (68, 38, 32, 26, 22, 18; `glow="soft"` for 05's agent link), `StatusPill`, `Button` / `buttonClass` (lime, ink, outline, quiet, ghost at 30/36/40/48/56px), `EventNav` (brand, status pill, links, bidding power and paddle pills; design/27: Lots and My paddle, which opens 11 once bidding has closed), `GlimBand`, `CornerOrb`, `Eyebrow`, `Money`, the line icons, and `drawings/` (`LotIllustration` plus every lot drawing in the approved HTML; `RIVERSIDE_LOT_DRAWINGS` maps template lots to them and the seed stores those keys).
 
-Screens: `catalog/CatalogScreen` (08) and `lot/LotDetailScreen` (05), fed by `src/server/queries`; `power/` (09, its own README); `glim/` (07, the panel and its cards, with `CornerOrb` and `event/GlimSlot`); `organizer/` (12, its own README). `live/` is the browser's side of the stream (its own README).
+Screens: `catalog/CatalogScreen` (08, with `NotSetBand` for design/20 state 1) and `lot/LotDetailScreen` (05; `lot/bid-card-state.ts` picks design/19's nine card states); `power/` (09 and the PayPal window hook, its own README); `glim/` (07, the panel and its cards, with `CornerOrb` and `event/GlimSlot`; `AutopilotCards.tsx` is design/21's V2 and V3, `marks.tsx` the header's pause, play and spinner marks); `paddle/` (10), `receipt/` (11 and the 25b PDF page) and `projector/` (14), each with its own README; `organizer/` (12 and Insights, its own README). `live/` is the browser's side of the stream (its own README). All approved boards in design/ (16 to 29) are built; docs/status/day3.md lists what each one covers and the states still plain.
 
-Countdowns and "2 min ago" run on the server's clock through `ServerClockProvider`. Every control on these screens is wired; a state whose image is not approved yet renders plain, and docs/status/day2.md lists each one with the design file that replaces it.
+Countdowns and "2 min ago" run on the server's clock through `ServerClockProvider`. Every control on these screens is wired; a state with no image renders plain, with approved components, and docs/status/day3.md lists them.
 
 ## Contracts
 
 - `api.ts`: the browser's fetch wrapper. `apiGet`, `apiPost` and `apiFetch` return the JSON or throw `ApiClientError` with the server's `code`, `message` and `details`.
-- `glim-events.ts`: `openGlim({ lotNumber?, prefill? })` opens the chat from anywhere, and the panel listens with `onGlimOpen`. `GlimOpenButton` is the same for a server component.
+- `glim-events.ts`: `openGlim({ lotNumber?, prefill?, edit? })` opens the chat from anywhere (`edit` opens the running plan's editor, from 10's "Edit plan"), and the panel listens with `onGlimOpen`. `GlimOpenButton` is the same for a server component.
 - `event/LiveProviders.tsx` and `event/GlimSlot.tsx`: what the shared layout (`src/app/e/[slug]/layout.tsx`) renders around every page of an event. The live layer and the Glim panel each fill in their own file.
-- `entry/FirstNameForm.tsx`: the plain form behind the home and join pages, until design/16 and 16b are approved.
+- `entry/`: design/16 (home), 16b (join) and Fairhold's own nav. Both forms post to Server Actions (`entry/actions.ts`, work in `entry/enter.ts`), so a press before hydration, or with scripts off, is a plain form post answered with the session cookie and a redirect; a hydrated form loads the answer in full. The PayPal sandbox buyer card reads `DEMO_BUYER_1_EMAIL` and `DEMO_BUYER_1_PASSWORD` per request and shows nothing without both; the password only copies.
+- `demo/`: what a demo gala adds, through the event layout's `DemoSlot`. design/16c over a gala that ended, was reset or is gone; the Sandbox demo marker in the navs (shown by the slot's `data-demo-gala` flag, so the seeded event keeps its approved look); the creator's role menu with the demo controls on POST /api/events/[slug]/demo/[action] (`RoleMenu`, fed by `demo-store.ts`); and the five-step demo guide on 08 (design/18 with design/21's V5).
+- `event/EventFooter.tsx`: "Riverside Shelter Gala · runs on Fairhold", as 16b draws it (only 16b uses it so far).
+- `receipt/receipt-href.ts`: the one way to 11 and 25b, used by the nav, 08's band after the close, and 10.
+- Spinners: `power/icons.tsx`'s `SpinnerIcon` is design/20's mark; `glim/marks.tsx` (`SpinnerMark`, 10px in the header), `organizer/Spinner.tsx` (its own `ledger-spin` animation) and `paddle/icons.tsx` draw the same ring at their own sizes.
 
 ## Fixture and visual checks
 

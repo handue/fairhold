@@ -6,8 +6,8 @@ import { useState, type ChangeEvent } from "react";
 import {
   highestHoldCents,
   holdAmountIssue,
-  holdAmountMessage,
   lowestHoldCents,
+  type HoldAmountIssue,
   type HoldLimits,
   type HoldStanding,
 } from "@/server/holds/rules";
@@ -15,12 +15,14 @@ import {
 import { cn } from "../cn";
 import { Eyebrow } from "../Eyebrow";
 import { formatUsd } from "../format";
-import { LockIcon } from "../icons";
+import { ArrowRightIcon, LockIcon } from "../icons";
 import { Money } from "../Money";
 
-import { holdFlowCopy } from "./hold-flow";
+import { holdFlowCopy, type HoldFlowCopy, type HoldNotice } from "./hold-flow";
 import { HowTheHoldWorks } from "./HowTheHoldWorks";
-import { NewWindowIcon } from "./icons";
+import { continueInThisTab } from "./hold-window";
+import { HowTheRaiseWorks } from "./HowTheRaiseWorks";
+import { AlertIcon, NewWindowIcon, NoticeMark, SpinnerIcon } from "./icons";
 import { useHoldWindow } from "./useHoldWindow";
 
 const SEGMENT = "flex h-48 items-center justify-center rounded-12 border text-15 font-medium tabular-nums";
@@ -29,7 +31,7 @@ const MAX_DIGITS = 7;
 
 type Choice = { kind: "preset"; cents: number } | { kind: "other"; digits: string };
 
-/** The setup page's words are approved. The raise page's are plain until design/20 frame 12 is. */
+/** The setup page's words (09) and the raise page's (design/20 frame 12). */
 function wordsFor(raising: boolean, currentHoldCents: number | null, highestCents: number) {
   if (!raising || currentHoldCents === null) {
     return {
@@ -179,6 +181,9 @@ export function PowerPanel({
     }
   }
 
+  const segmentTone = (selected: boolean) =>
+    selected ? "border-ink bg-ink text-white" : cn("border-line", copy.locked && "opacity-40");
+
   return (
     <main className="mx-auto flex w-880 flex-col items-center pt-96 text-center tabular-nums">
       <Eyebrow className="leading-16">{words.eyebrow}</Eyebrow>
@@ -188,9 +193,9 @@ export function PowerPanel({
       </p>
 
       <div className="w-480 text-left">
-        <div className="mt-40 flex items-baseline justify-between">
+        <div className={cn(raising ? "mt-32" : "mt-40", "flex items-baseline justify-between")}>
           <Eyebrow className="leading-16">{words.amountLabel}</Eyebrow>
-          <span className="text-12.5 leading-16 text-muted">{words.amountNote}</span>
+          <span className="text-12.5 leading-16 text-muted">{copy.amountNote ?? words.amountNote}</span>
         </div>
         <div
           role="radiogroup"
@@ -209,11 +214,7 @@ export function PowerPanel({
                 aria-label={formatUsd(cents)}
                 disabled={copy.locked}
                 onClick={() => choose({ kind: "preset", cents })}
-                className={cn(
-                  SEGMENT,
-                  selected ? "border-ink bg-ink text-white" : cn("border-line", copy.locked && "text-muted"),
-                  !copy.locked && "cursor-pointer",
-                )}
+                className={cn(SEGMENT, segmentTone(selected), !copy.locked && "cursor-pointer")}
               >
                 <Money cents={cents} />
               </button>
@@ -225,77 +226,168 @@ export function PowerPanel({
             aria-checked={shown.kind === "other"}
             disabled={copy.locked}
             onClick={() => choose({ kind: "other", digits: shown.kind === "other" ? shown.digits : "" })}
-            className={cn(
-              SEGMENT,
-              "font-sans",
-              shown.kind === "other" ? "border-ink bg-ink text-white" : cn("border-line", copy.locked && "text-muted"),
-              !copy.locked && "cursor-pointer",
-            )}
+            className={cn(SEGMENT, "font-sans", segmentTone(shown.kind === "other"), !copy.locked && "cursor-pointer")}
           >
             Other…
           </button>
         </div>
 
-        {/* "Other…" is undrawn: a plain field until design/20 frames 7 and 8 are approved. */}
+        {/* design/20 frames 7 and 8: digits only, so cents can't be typed. */}
         {shown.kind === "other" && (
-          <div className="mt-8">
+          <>
             <input
               aria-label="Other amount, in whole dollars"
               inputMode="numeric"
+              autoComplete="off"
               autoFocus
               disabled={copy.locked}
-              value={shown.digits === "" ? "" : `$${shown.digits}`}
+              value={shown.digits === "" ? "" : `$${Number(shown.digits).toLocaleString("en-US")}`}
               onChange={typeOther}
               placeholder="$"
-              className="h-48 w-full rounded-12 border border-ink px-14 font-mono text-15 tabular-nums"
+              className="mt-8 h-48 w-full rounded-12 px-16 font-mono text-15 font-medium tabular-nums outline-none inset-ring-[1.5px] inset-ring-ink placeholder:text-muted"
             />
             {issue ? (
-              <p role="alert" className="mt-8 text-12.5 leading-18 text-ink2">
-                {holdAmountMessage(issue)}
+              <p role="alert" className="mt-8 flex items-center gap-6 text-12.5 leading-16 whitespace-nowrap text-ink2">
+                <AlertIcon />
+                <span>
+                  <IssueLine issue={issue} />
+                </span>
               </p>
             ) : (
-              <p className="mt-8 text-12.5 leading-18 text-muted">
-                Whole dollars, {formatUsd(lowestCents)} to {formatUsd(highestCents)}.
+              <p className="mt-8 text-12.5 leading-16 whitespace-nowrap text-muted">
+                Whole dollars, <Amount cents={lowestCents} /> to <Amount cents={highestCents} />.
               </p>
             )}
-          </div>
+          </>
         )}
       </div>
 
-      <HowTheHoldWorks holdCents={explainedCents} closesLabel={closesLabel} exampleLot={exampleLot} />
+      {raising && standing.currentHoldCents !== null ? (
+        <HowTheRaiseWorks newHoldCents={explainedCents} currentHoldCents={standing.currentHoldCents} />
+      ) : (
+        <HowTheHoldWorks holdCents={explainedCents} closesLabel={closesLabel} exampleLot={exampleLot} />
+      )}
 
-      <div className="mt-40 w-480 text-left">
-        {copy.notice && (
-          <p role="status" className="mb-12 text-14 leading-20 text-ink2">
-            {copy.notice}
-          </p>
-        )}
-        <button
-          type="button"
-          disabled={!copy.buttonEnabled}
-          onClick={hold}
-          className={cn(
-            HOLD_BUTTON,
-            copy.buttonEnabled ? "cursor-pointer bg-lime text-ink" : "bg-surface",
-            !copy.buttonEnabled && (chosenCents === null ? "text-muted" : "text-ink"),
-          )}
-        >
-          {copy.button}
-          <NewWindowIcon size={18} />
-        </button>
-        <p className="mt-16 flex items-center gap-8 text-12.5 leading-18 text-ink2">
-          <LockIcon size={15} />
-          {copy.trust ?? words.trust}
-        </p>
+      <div className={cn(raising ? "mt-24" : "mt-40", "w-480 text-left")}>
+        {copy.notice && <Notice notice={copy.notice} />}
+        <HoldButton copy={copy} onHold={hold} />
         {copy.continueHref && (
-          <p className="mt-8 text-12.5 leading-18 text-ink2">
-            Didn’t open?{" "}
-            <a href={copy.continueHref} className="font-medium text-ink underline">
+          <p className="mt-16 flex items-center gap-6 text-13 leading-18 whitespace-nowrap text-ink2">
+            Didn’t open?
+            <a
+              href={copy.continueHref}
+              onClick={(event) => {
+                // Marks this tab as PayPal's, so the return page goes back to the auction at once
+                // rather than saying the window closes (design/17 frame 3).
+                if (state.phase !== "waiting") return;
+                event.preventDefault();
+                continueInThisTab({ holdId: state.holdId, approvalUrl: state.approvalUrl }, window);
+              }}
+              className="flex items-center gap-6 font-semibold text-ink"
+            >
               Continue in this tab
+              <ArrowRightIcon size={14} />
             </a>
           </p>
         )}
+        <p className={cn(copy.continueHref ? "mt-10" : "mt-16", "flex items-center gap-8 text-12.5 leading-18 text-ink2")}>
+          {copy.trustIcon === "window" ? <BrowserWindowIcon size={15} /> : <LockIcon size={15} />}
+          {copy.trust ?? words.trust}
+        </p>
       </div>
     </main>
   );
+}
+
+/**
+ * The button. While PayPal's window is open it reads as a status on the Surface, with a spinner in
+ * the arrow's place (design/20 frame 9): still the column's one button, disabled and busy.
+ */
+function HoldButton({ copy, onHold }: { copy: HoldFlowCopy; onHold: () => void }) {
+  const spaced = cn(HOLD_BUTTON, copy.notice && "mt-12");
+  if (copy.status !== null) {
+    return (
+      <button type="button" disabled aria-busy={copy.status === "waiting"} className={cn(spaced, "bg-surface text-ink")}>
+        {copy.button}
+        {copy.status === "waiting" && <SpinnerIcon size={20} className="text-ink" />}
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={!copy.buttonEnabled}
+      onClick={onHold}
+      className={cn(spaced, copy.buttonEnabled ? "cursor-pointer bg-lime text-ink" : "bg-surface text-muted")}
+    >
+      {copy.button}
+      {copy.buttonIcon === "arrow" ? <ArrowRightIcon size={18} /> : <NewWindowIcon size={18} />}
+    </button>
+  );
+}
+
+/** design/17 frame 5's line: a browser window, where the others have the lock. */
+function BrowserWindowIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none">
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <path d="M3.5 9.5h17" />
+    </svg>
+  );
+}
+
+/** What just happened, in design/20's quiet panel right above the button (frames 10 and 11). */
+function Notice({ notice }: { notice: HoldNotice }) {
+  return (
+    <div role="status" className="flex items-center gap-14 rounded-16 bg-surface px-16 py-14">
+      <span className="flex size-32 flex-none items-center justify-center rounded-full bg-white text-ink">
+        {notice.mark === "confirming" ? <SpinnerIcon size={16} /> : <NoticeMark kind={notice.mark} />}
+      </span>
+      <div>
+        <b className="block text-15 leading-20 font-semibold">{notice.title}</b>
+        <span className="mt-2 block text-13 leading-18 text-muted">{notice.body}</span>
+      </div>
+    </div>
+  );
+}
+
+/** An amount in a help line, as design/20 sets it: mono, medium, in ink. */
+function Amount({ cents }: { cents: number }) {
+  return (
+    <b className="font-mono font-medium text-ink">
+      <Money cents={cents} />
+    </b>
+  );
+}
+
+/** holdAmountMessage's sentences (src/server/holds/rules.ts), with the amounts set as design/20 sets them. */
+function IssueLine({ issue }: { issue: HoldAmountIssue }) {
+  switch (issue.reason) {
+    case "not_whole_dollars":
+      return "Enter a whole dollar amount.";
+    case "below_minimum":
+      return (
+        <>
+          The least you can hold is <Amount cents={issue.minCents} />.
+        </>
+      );
+    case "above_maximum":
+      return (
+        <>
+          The most you can hold is <Amount cents={issue.maxCents} />.
+        </>
+      );
+    case "not_a_raise":
+      return (
+        <>
+          You already hold <Amount cents={issue.currentHoldCents} />. Choose more than that.
+        </>
+      );
+    case "below_commitments":
+      return (
+        <>
+          Your bids already need <Amount cents={issue.committedCents} /> of bidding power. Choose at least that.
+        </>
+      );
+  }
 }

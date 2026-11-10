@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { ViewerSummary } from "@/server/queries/types";
 
 import { buttonClass } from "./Button";
@@ -6,8 +8,12 @@ import { ArrowRightIcon, LockIcon } from "./icons";
 import { Orb } from "./Orb";
 import { StatusPill } from "./StatusPill";
 
-/** 08's ink band: what the hold means, the viewer's bids, and the call to let Glim bid. */
-export function GlimBand({ viewer }: { viewer: ViewerSummary }) {
+/**
+ * 08's ink band: what the hold means, the viewer's bids, and the call to let Glim bid. Once bidding
+ * has closed there is nothing left for Glim to bid on, so `receiptHref` puts 11 in the call's place,
+ * with 12's "See your receipt" (C3). This state is not drawn.
+ */
+export function GlimBand({ viewer, receiptHref }: { viewer: ViewerSummary; receiptHref?: string }) {
   const hasBids = viewer.winningCount > 0 || viewer.outbidCount > 0;
 
   return (
@@ -33,20 +39,30 @@ export function GlimBand({ viewer }: { viewer: ViewerSummary }) {
         </>
       )}
 
-      <div className="ml-auto flex items-center gap-12">
-        <Orb size={32} />
-        <GlimOpenButton
-          className={buttonClass({
-            variant: "lime",
-            size: 48,
-            padding: "pr-18 pl-20",
-            className: "focus-visible:outline-lime",
-          })}
+      {receiptHref ? (
+        <Link
+          href={receiptHref}
+          className={buttonClass({ variant: "lime", size: 48, padding: "pr-18 pl-20", className: "ml-auto focus-visible:outline-lime" })}
         >
-          Let Glim bid for me
+          See your receipt
           <ArrowRightIcon size={18} />
-        </GlimOpenButton>
-      </div>
+        </Link>
+      ) : (
+        <div className="ml-auto flex items-center gap-12">
+          <Orb size={32} />
+          <GlimOpenButton
+            className={buttonClass({
+              variant: "lime",
+              size: 48,
+              padding: "pr-18 pl-20",
+              className: "focus-visible:outline-lime",
+            })}
+          >
+            Let Glim bid for me
+            <ArrowRightIcon size={18} />
+          </GlimOpenButton>
+        </div>
+      )}
     </section>
   );
 }

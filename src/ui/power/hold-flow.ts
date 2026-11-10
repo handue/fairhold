@@ -3,8 +3,8 @@
  * window (the window's own messages, the stream's hold rows and polling the hold), in any order and
  * more than once, so every transition has to tolerate a repeat.
  *
- * Only the idle state is approved (09). The lines below are the plain copy for the undrawn states
- * until design/20 and design/17 are approved; they all live here so they are easy to replace.
+ * The words of every state live here: design/20's frames 9 to 11 for the window, its nearest frame
+ * for the states it doesn't draw (still confirming, a lost window, a refused approval).
  */
 import type { PaypalWindowOutcome } from "@/app/paypal/window-message";
 import type { HoldStatus } from "@/server/paypal/hold-store";
@@ -21,6 +21,8 @@ export type HoldFlowState =
   | { phase: "waiting"; amountCents: number; holdId: string; approvalUrl: string; windowLost: boolean }
   /** The popup was blocked and this tab is on its way to PayPal. */
   | { phase: "redirecting"; amountCents: number }
+  /** design/17 frame 5: the popup was blocked; the hold waits for "Continue to PayPal in this tab". */
+  | { phase: "blocked"; amountCents: number; holdId: string; approvalUrl: string }
   /** The guest approved and PayPal has not finished; the webhook may be what completes it. */
   | { phase: "confirming"; amountCents: number; holdId: string }
   | { phase: "approved"; amountCents: number; holdId: string }
@@ -96,6 +98,9 @@ export function holdFlowReducer(state: HoldFlowState, event: HoldFlowEvent): Hol
       return { phase: "opening", amountCents: event.amountCents };
     case "created":
       if (state.phase !== "opening") return state;
+      if (event.route === "blocked") {
+        return { phase: "blocked", amountCents: state.amountCents, holdId: event.holdId, approvalUrl: event.approvalUrl };
+      }
       return event.route === "redirect"
         ? { phase: "redirecting", amountCents: state.amountCents }
         : {
@@ -125,19 +130,55 @@ export function watchedHoldId(state: HoldFlowState): string | null {
   return isWatched(state) ? state.holdId : null;
 }
 
+/** design/20's quiet panel right above the button, saying what just happened (frames 10 and 11). */
+export interface HoldNotice {
+  /** The mark in its white circle: a cross after a cancel, "!" after anything else, a spinner while PayPal confirms. */
+  mark: "canceled" | "failed" | "confirming";
+  title: string;
+  body: string;
+}
+
 export interface HoldFlowCopy {
-  /** The button's label. */
+  /** The button's label, or the status's while `status` is set. */
   button: string;
   /** False while something is in flight or the amount cannot be held. */
   buttonEnabled: boolean;
   /** True while the amount may not change. */
   locked: boolean;
-  /** A plain line above the button, saying what just happened. */
-  notice: string | null;
+  /**
+   * The button's slot shows a status instead of the button (design/20 frame 9): "waiting" with a
+   * spinner while the window is open, "done" once the hold landed.
+   */
+  status: "waiting" | "done" | null;
+  notice: HoldNotice | null;
   /** The line under the button; null keeps the page's own. */
   trust: string | null;
   /** Where "Continue in this tab" goes, when the window may be hidden or swallowed. */
   continueHref: string | null;
+  /** Replaces the amount's note while it can't change; null keeps the page's own. */
+  amountNote: string | null;
+  /** design/17 frame 5 draws the button with 09's arrow and the line with a window, not a lock. */
+  buttonIcon?: "arrow";
+  trustIcon?: "window";
+}
+
+/** design/17 frame 5, while the amount on screen is the blocked hold's. */
+const BLOCKED_BUTTON = "Continue to PayPal in this tab";
+const BLOCKED_TRUST = "Your browser blocked the PayPal window. You’ll come back here to bid.";
+
+const NOTHING_HELD = "Nothing was held.";
+/** What POST /api/holds/[slug] answers when PayPal would not start the hold (src/server/holds/create.ts). */
+export const PAYPAL_UNAVAILABLE_LINE = "PayPal could not start this hold. Nothing was held. Please try again.";
+
+/** A failure's notice: PayPal's own failures in frame 11's words, anything else as the server said it. */
+export function failureNotice(message: string): HoldNotice {
+  if (message === DECLINED_LINE) {
+    return { mark: "failed", title: "PayPal declined the hold", body: "Nothing was held. Try another amount or payment method." };
+  }
+  if (message === FAILED_LINE || message === PAYPAL_UNAVAILABLE_LINE) {
+    return { mark: "failed", title: "PayPal didn’t respond", body: NOTHING_HELD };
+  }
+  return { mark: "failed", title: message, body: NOTHING_HELD };
 }
 
 /** `chosenCents` is the amount on screen, or null when it cannot be held. */
@@ -146,16 +187,26 @@ export function holdFlowCopy(state: HoldFlowState, chosenCents: number | null): 
     button: chosenCents === null ? "Hold with PayPal" : `Hold ${formatUsd(chosenCents)} with PayPal`,
     buttonEnabled: chosenCents !== null,
     locked: false,
+    status: null,
     notice: null,
     trust: null,
     continueHref: null,
+    amountNote: null,
   };
-  const busy = (button: string, trust: string | null = null): HoldFlowCopy => ({
+  // After a cancel or a failure the same amount is one press away; a new amount starts over.
+  const again = (notice: HoldNotice): HoldFlowCopy => ({
+    ...ready,
+    button: chosenCents === null ? ready.button : "Try again",
+    notice,
+  });
+  const waiting = (button: string): HoldFlowCopy => ({
     ...ready,
     button,
     buttonEnabled: false,
     locked: true,
-    trust,
+    status: "waiting",
+    trust: "Nothing is held until you approve.",
+    amountNote: "Can’t change while the PayPal window is open",
   });
 
   switch (state.phase) {
@@ -163,25 +214,48 @@ export function holdFlowCopy(state: HoldFlowState, chosenCents: number | null): 
       return ready;
     case "opening":
     case "redirecting":
-      return busy("Opening PayPal…");
+      return waiting("Opening PayPal…");
+    case "blocked":
+      // Another amount on screen is a new hold, so the button says so again.
+      return chosenCents === state.amountCents
+        ? { ...ready, button: BLOCKED_BUTTON, trust: BLOCKED_TRUST, buttonIcon: "arrow", trustIcon: "window" }
+        : ready;
     case "waiting":
       return state.windowLost
-        ? {
-            ...ready,
-            notice: "We can’t see the PayPal window any more. If it’s still open, finish there. Otherwise, try again.",
-          }
-        : { ...busy("Finish in the PayPal window", "Nothing is held until you approve."), continueHref: state.approvalUrl };
+        ? again({
+            mark: "failed",
+            title: "We can’t see the PayPal window",
+            body: "If it’s still open, finish there. Otherwise, try again.",
+          })
+        : { ...waiting("Finish in the PayPal window"), continueHref: state.approvalUrl };
     case "confirming":
       // Rare, and it can take a while, so it does not lock the guest out: if this hold lands after
       // they tried again, the swap keeps one hold and releases the other.
-      return { ...ready, notice: "Still confirming with PayPal. Your bidding power updates as soon as it does." };
+      return {
+        ...ready,
+        notice: {
+          mark: "confirming",
+          title: "Still confirming with PayPal",
+          body: "Your bidding power updates as soon as it does.",
+        },
+      };
     case "approved":
-      return busy(`${formatUsd(state.amountCents)} is on hold with PayPal`, "Taking you back to bid…");
+      return {
+        ...ready,
+        button: `${formatUsd(state.amountCents)} is on hold with PayPal`,
+        buttonEnabled: false,
+        locked: true,
+        status: "done",
+        trust: "Taking you back to bid…",
+      };
     case "canceled":
-      return { ...ready, notice: "Canceled in PayPal. Nothing was held." };
+      return again({ mark: "canceled", title: "Canceled in PayPal", body: NOTHING_HELD });
     case "refused":
-      return { ...ready, notice: "Your bidding power stayed as it was. The PayPal window says why." };
+      return {
+        ...ready,
+        notice: { mark: "failed", title: "Your bidding power stayed as it was", body: "The PayPal window says why." },
+      };
     case "failed":
-      return { ...ready, notice: state.message };
+      return again(failureNotice(state.message));
   }
 }

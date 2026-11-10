@@ -2,7 +2,9 @@ Owner area: demo. Demo gala cloning and the seeded Riverside template. The direc
 
 ## Modules
 
-- `template.ts`: the event settings and the 24 approved lots (13's intake table), with short titles.
+- `template.ts`: the event settings and the 24 approved lots (13's intake table), with short titles. Each lot's
+  cover drawing comes from `RIVERSIDE_LOT_DRAWINGS` (`src/ui/drawings/riverside.ts`, design/29): all 24 have one,
+  and a database seeded before Nov 9 needs `npm run db:seed` again to pick them up.
 - `roster.ts`: the 85 simulated guests and Jamie (paddle 142), with holds that add up to 12.
 - `story.ts`: the gala's evening, bid by bid, 7:00 to 9:30 PM. `replay.ts` replays it under the engine's
   rules (open lot, next minimum, hold invariant, Glim limits answering by the minimum raise) and throws
@@ -45,3 +47,6 @@ prints it) to render the approved countdowns. On a screen that prints the date (
   leads Family Portrait on 14 and nobody bids after, so he wins it, on a $250 hold.
 - Sheet A (not yet approved) shows Lot 22 closing at 9:10 PM; 14 has 16 lots closing at 9:30, which must
   include Lot 22.
+- Where design/16 to 29 draw other numbers, this story wins (Day 3): 19's state 3 shows Lot 03 needing $660 and
+  states 5 and 7 Lot 22 at $75; 20's raise mode offers $1,000 and Other… (the presets are $250, $500, $1,000),
+  not the board's $750; 21b's "You'll pay $470" reads $310 in the autopilot demo, where Glim moves the money.

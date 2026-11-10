@@ -22,6 +22,18 @@ describe("powerHref", () => {
   it("comes back to a lot for a bid that needs bidding power first", () => {
     const href = new URL(powerHrefForLot(links, 7), "https://x.example");
     expect(href.searchParams.get("next")).toBe("/e/gala-1/lots/07");
+    expect(href.searchParams.has("raise")).toBe(false);
+  });
+
+  it("asks for the raise that covers a bid, in whole dollars, which 09 reads back", () => {
+    const href = new URL(powerHrefForLot(links, 7, 840_00), "https://x.example");
+    expect(href.searchParams.get("raise")).toBe("840");
+    expect(parsePowerAmount({ raise: href.searchParams.get("raise") ?? undefined })).toBe(840_00);
+  });
+
+  it("leaves out a raise that isn't whole dollars", () => {
+    expect(powerHref(links, null, 840_50)).toBe("/e/gala-1/power");
+    expect(powerHref(links, null, 0)).toBe("/e/gala-1/power");
   });
 });
 

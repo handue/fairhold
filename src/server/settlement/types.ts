@@ -107,6 +107,26 @@ export interface LedgerSettlement {
   pending: number;
   /** Still queued or processing. */
   active: number;
+  /** Bidders who won nothing and whose whole hold has been released. */
+  releasedInFull: number;
+  /** Receipts written for this event's winners. */
+  receipts: number;
+}
+
+/**
+ * Glim on 12: who it bid for, and its decisions on its own (21's V6 check row), read back from
+ * glim_actions and the bids themselves rather than trusted from the autopilot's own outcome.
+ */
+export interface LedgerGlim {
+  bidders: number;
+  winners: number;
+  bids: number;
+  /** Glim's bids above their limit or with none on record; read while bidding runs too, for the corner. */
+  bidsOutsideLimits: number;
+  /** Plan changes and raises Glim decided on its own, inside a guest's mandate. */
+  decisions: number;
+  /** Decisions whose lots or amounts fall outside the mandate they were made under. */
+  decisionsOutsideRules: number;
 }
 
 export interface LedgerView {
@@ -127,7 +147,65 @@ export interface LedgerView {
     withoutBids: { number: number; title: string }[];
   };
   holds: { real: number; simulated: number };
-  glim: { bidders: number; winners: number; bids: number };
+  glim: LedgerGlim;
   checks: SettlementChecks;
   settlement: LedgerSettlement | null;
+  /** The server's clock when this was read (FREEZE_CLOCK_AT outside production), for the countdown. */
+  now: Instant;
+}
+
+// Insights (design/28) ----------------------------------------------------------------------------
+
+/** One lot on Insights' "Top lots" grid. */
+export interface InsightsLot {
+  number: number;
+  title: string;
+  /** The winning bid once closed, the high bid while open; null with no bids. */
+  amountCents: number | null;
+  estimatedValueCents: number | null;
+  bids: number;
+  paddleNumber: number | null;
+  /** The bid that won, or leads, was Glim's. */
+  glim: boolean;
+  closed: boolean;
+}
+
+/** One point of "Raised through the evening": the high bids on every lot added up at that instant. */
+export interface RaisedPoint {
+  at: Instant;
+  cents: number;
+}
+
+/**
+ * The organizer's "Tonight" report, on the same figures as 12: the ledger's view plus the lots, the
+ * bids over time and Glim's limits. While bidding runs every figure is what it is now.
+ */
+export interface InsightsView {
+  event: LedgerView["event"];
+  phase: LedgerPhase;
+  now: Instant;
+  /** Bidders as 12 counts them, and how many are simulated guests. */
+  bidders: number;
+  simulatedBidders: number;
+  /** A demo says which bidders are simulated; an event with only real holds has nothing to say. */
+  saySimulated: boolean;
+  raisedCents: number;
+  /** From the open to the close, or to now while bidding runs; the chart's axis ends at the close. */
+  raised: RaisedPoint[];
+  window: { opensAt: Instant; closesAt: Instant };
+  lots: { total: number; sold: number; open: number; withoutBids: { number: number; title: string }[] };
+  bids: { total: number; glim: number };
+  winners: { count: number; glim: number };
+  /** "Limits kept": each of Glim's limits, by the share of it Glim's highest bid there reached. */
+  limits: { shares: number[]; reached: number; passed: number; glimBids: number; glimBidsWithin: number };
+  /** "Hold utilization": what was (or would be) charged against what was held. */
+  holds: {
+    heldCents: number;
+    chargedCents: number;
+    winnerHoldCents: number;
+    /** Each winner's charged share of their own hold, largest first. */
+    winnerShares: number[];
+    nonWinners: number;
+  };
+  lotRows: InsightsLot[];
 }

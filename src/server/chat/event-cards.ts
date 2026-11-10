@@ -85,7 +85,8 @@ export function eventCardDraft(fact: EventFact, context: { timezone: string; sho
       };
       break;
     case "lot_won":
-      chip = { kind: "closed" };
+      // design/22 #20's lime Won chip; glim_actions keeps "closed", so no enum changes.
+      chip = { kind: "won", amountCents: payload.amountCents };
       action = {
         ...base,
         kind: "lot_won",
@@ -120,6 +121,18 @@ export function eventCardDraft(fact: EventFact, context: { timezone: string; sho
       line: action.message,
       chip,
     },
+  };
+}
+
+/** design/22 #13 and #18: the card after Start bidding, and after Update plan. */
+export function planStartedCard(input: { at: Date; timezone: string; edited: boolean; line: string; actionId: string | null }): EventCard {
+  return {
+    type: "event",
+    actionId: input.actionId,
+    at: input.at.toISOString(),
+    eyebrow: eventEyebrow(input.at, input.timezone, input.edited ? "Plan edited" : "Plan started"),
+    line: input.line,
+    chip: null,
   };
 }
 

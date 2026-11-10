@@ -42,9 +42,12 @@ describe("GET /paypal/return", () => {
     expect(completeHoldApproval).toHaveBeenCalledWith({ holdId: "hold-1", orderId: "ORDER1" });
     expect(response.status).toBe(200);
     const html = await response.text();
-    expect(html).toContain("$500 is on hold with PayPal");
+    // design/17 frame 3: no link, the window closes itself, or goes back after a full-page trip.
+    expect(html).toContain("<h1>Approved</h1>");
+    expect(html).toContain("<span>$500 is held with PayPal.</span>");
+    expect(html).toContain("This window closes in 3 seconds.");
     expect(html).toContain('"outcome":"approved"');
-    expect(html).toContain('href="/e/riverside/lots/7"');
+    expect(html).toContain('window.location.replace("/e/riverside/lots/7")');
   });
 
   it("explains a decline without claiming anything was held", async () => {
@@ -129,7 +132,10 @@ describe("GET /paypal/cancel", () => {
       await cancelGet(new Request("https://fairhold.example/paypal/cancel?hold=hold-1&next=%2Fe%2Friverside%2Flots%2F7&token=ORDER1"))
     ).text();
 
-    expect(html).toContain('href="/e/riverside/power?next=%2Fe%2Friverside%2Flots%2F7"');
+    // design/17 frame 4: "Close window", and in the gala tab itself, straight back to bidding power.
+    expect(html).toContain("<h1>Canceled</h1>");
+    expect(html).toContain(">Close window</button>");
+    expect(html).toContain('window.location.replace("/e/riverside/power?next=%2Fe%2Friverside%2Flots%2F7")');
   });
 
   it("reports an already approved hold as approved", async () => {
