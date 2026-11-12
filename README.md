@@ -4,6 +4,8 @@ Fairhold runs charity silent auctions. Each guest puts bidding power on hold wit
 
 **Hosted demo: https://fairhold.onrender.com** (PayPal sandbox, no real money. You are the one real guest among 85 simulated guests.)
 
+**Demo video (2:53): https://youtu.be/RQAdlKA3wP4**
+
 > AI decides inside a mandate; deterministic code enforces the mandate and the hold.
 
 | Who | What they do |
